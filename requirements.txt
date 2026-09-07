@@ -1,0 +1,9 @@
+aiogram>=3.20,<4
+fastapi>=0.115,<1
+uvicorn[standard]>=0.34,<1
+openai>=1.75,<3
+pydantic>=2.11,<3
+python-dotenv>=1.1,<2
+python-multipart>=0.0.20,<1
+httpx[socks]>=0.28,<1
+pytest>=8.3,<9
