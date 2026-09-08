@@ -1,95 +1,96 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <meta name="theme-color" content="#111614">
   <title>MassUp AI</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="/static/weight.css">
+  <link rel="stylesheet" href="/static/style.css?v=1.0.3">
+  <link rel="stylesheet" href="/static/weight.css?v=1.0.3">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <div class="app-shell">
     <header>
-      <div><span class="eyebrow">ПЕРСОНАЛЬНЫЙ AI</span><h1>MassUp</h1></div>
-      <button class="avatar" id="profileShortcut" aria-label="Профиль">ME</button>
+      <div><span class="eyebrow">РџР•Р РЎРћРќРђР›Р¬РќР«Р™ AI</span><h1>MassUp</h1></div>
+      <button class="avatar" id="profileShortcut" aria-label="РџСЂРѕС„РёР»СЊ">ME</button>
     </header>
 
     <main>
       <section class="view active" id="todayView">
-        <div class="greeting"><p id="todayDate">Сегодня</p><h2 id="greeting">Твой баланс</h2></div>
+        <div class="greeting"><p id="todayDate">РЎРµРіРѕРґРЅСЏ</p><h2 id="greeting">РўРІРѕР№ Р±Р°Р»Р°РЅСЃ</h2></div>
         <article class="hero-card">
-          <div class="ring" id="calorieRing"><div><strong id="kcalNow">0</strong><span>из <b id="kcalTarget">—</b> ккал</span></div></div>
-          <p id="remainingText">Заполни профиль, чтобы рассчитать цель</p>
+          <div class="ring" id="calorieRing"><div><strong id="kcalNow">0</strong><span>РёР· <b id="kcalTarget">вЂ”</b> РєРєР°Р»</span></div></div>
+          <p id="remainingText">Р—Р°РїРѕР»РЅРё РїСЂРѕС„РёР»СЊ, С‡С‚РѕР±С‹ СЂР°СЃСЃС‡РёС‚Р°С‚СЊ С†РµР»СЊ</p>
         </article>
         <div class="macro-grid">
-          <article class="macro"><span>Белки</span><strong><b id="proteinNow">0</b> / <i id="proteinTarget">—</i> г</strong><div><em id="proteinBar"></em></div></article>
-          <article class="macro"><span>Жиры</span><strong><b id="fatNow">0</b> / <i id="fatTarget">—</i> г</strong><div><em id="fatBar"></em></div></article>
-          <article class="macro"><span>Углеводы</span><strong><b id="carbsNow">0</b> / <i id="carbsTarget">—</i> г</strong><div><em id="carbsBar"></em></div></article>
+          <article class="macro"><span>Р‘РµР»РєРё</span><strong><b id="proteinNow">0</b> / <i id="proteinTarget">вЂ”</i> Рі</strong><div><em id="proteinBar"></em></div></article>
+          <article class="macro"><span>Р–РёСЂС‹</span><strong><b id="fatNow">0</b> / <i id="fatTarget">вЂ”</i> Рі</strong><div><em id="fatBar"></em></div></article>
+          <article class="macro"><span>РЈРіР»РµРІРѕРґС‹</span><strong><b id="carbsNow">0</b> / <i id="carbsTarget">вЂ”</i> Рі</strong><div><em id="carbsBar"></em></div></article>
         </div>
-        <div class="section-title"><h3>Сегодня съедено</h3><button id="manualOpen">+ Вручную</button></div>
-        <div id="mealList" class="meal-list"><p class="empty">Пока нет записей. Добавь фотографию первого блюда.</p></div>
+        <div class="section-title"><h3>РЎРµРіРѕРґРЅСЏ СЃСЉРµРґРµРЅРѕ</h3><button id="manualOpen">+ Р’СЂСѓС‡РЅСѓСЋ</button></div>
+        <div id="mealList" class="meal-list"><p class="empty">РџРѕРєР° РЅРµС‚ Р·Р°РїРёСЃРµР№. Р”РѕР±Р°РІСЊ С„РѕС‚РѕРіСЂР°С„РёСЋ РїРµСЂРІРѕРіРѕ Р±Р»СЋРґР°.</p></div>
       </section>
 
       <section class="view" id="cameraView">
-        <div class="greeting"><p>AI-РАСПОЗНАВАНИЕ</p><h2>Добавить еду</h2></div>
+        <div class="greeting"><p>AI-Р РђРЎРџРћР—РќРђР’РђРќРР•</p><h2>Р”РѕР±Р°РІРёС‚СЊ РµРґСѓ</h2></div>
         <label class="photo-drop" for="photoInput">
-          <div class="camera-icon">◎</div>
-          <strong>Сфотографировать блюдо</strong>
-          <span>или выбрать готовое фото</span>
-          <img id="photoPreview" alt="Предпросмотр">
+          <div class="camera-icon">в—Ћ</div>
+          <strong>РЎС„РѕС‚РѕРіСЂР°С„РёСЂРѕРІР°С‚СЊ Р±Р»СЋРґРѕ</strong>
+          <span>РёР»Рё РІС‹Р±СЂР°С‚СЊ РіРѕС‚РѕРІРѕРµ С„РѕС‚Рѕ</span>
+          <img id="photoPreview" alt="РџСЂРµРґРїСЂРѕСЃРјРѕС‚СЂ">
         </label>
         <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
-        <label class="field-label">Приём пищи<select id="mealType"><option>Завтрак</option><option>Обед</option><option>Ужин</option><option>Перекус</option></select></label>
-        <button class="primary" id="analyzeButton" disabled>Распознать и записать</button>
-        <p class="fine-print">Фото даёт приблизительную оценку. Проверь вес порции, масло и соусы.</p>
+        <label class="field-label">РџСЂРёС‘Рј РїРёС‰Рё<select id="mealType"><option>Р—Р°РІС‚СЂР°Рє</option><option>РћР±РµРґ</option><option>РЈР¶РёРЅ</option><option>РџРµСЂРµРєСѓСЃ</option></select></label>
+        <button class="primary" id="analyzeButton" disabled>Р Р°СЃРїРѕР·РЅР°С‚СЊ Рё Р·Р°РїРёСЃР°С‚СЊ</button>
+        <p class="fine-print">Р¤РѕС‚Рѕ РґР°С‘С‚ РїСЂРёР±Р»РёР·РёС‚РµР»СЊРЅСѓСЋ РѕС†РµРЅРєСѓ. РџСЂРѕРІРµСЂСЊ РІРµСЃ РїРѕСЂС†РёРё, РјР°СЃР»Рѕ Рё СЃРѕСѓСЃС‹.</p>
         <div id="analysisResult"></div>
       </section>
 
       <section class="view" id="planView">
-        <div class="greeting"><p>7 ДНЕЙ</p><h2>Рацион по бюджету</h2></div>
+        <div class="greeting"><p>7 Р”РќР•Р™</p><h2>Р Р°С†РёРѕРЅ РїРѕ Р±СЋРґР¶РµС‚Сѓ</h2></div>
         <article class="budget-card">
-          <label>Бюджет на неделю<div class="money"><input id="budgetInput" type="number" min="500" step="100" value="4000"><span>₽</span></div></label>
-          <label>Что уже есть дома<textarea id="pantryInput" placeholder="Рис, яйца, масло…"></textarea></label>
-          <label>Пожелания<textarea id="wishesInput" placeholder="Готовить раз в два дня, без рыбы…"></textarea></label>
-          <button class="primary light" id="planButton">Составить меню</button>
+          <label>Р‘СЋРґР¶РµС‚ РЅР° РЅРµРґРµР»СЋ<div class="money"><input id="budgetInput" type="number" min="500" step="100" value="4000"><span>в‚Ѕ</span></div></label>
+          <label>Р§С‚Рѕ СѓР¶Рµ РµСЃС‚СЊ РґРѕРјР°<textarea id="pantryInput" placeholder="Р РёСЃ, СЏР№С†Р°, РјР°СЃР»РѕвЂ¦"></textarea></label>
+          <label>РџРѕР¶РµР»Р°РЅРёСЏ<textarea id="wishesInput" placeholder="Р“РѕС‚РѕРІРёС‚СЊ СЂР°Р· РІ РґРІР° РґРЅСЏ, Р±РµР· СЂС‹Р±С‹вЂ¦"></textarea></label>
+          <button class="primary light" id="planButton">РЎРѕСЃС‚Р°РІРёС‚СЊ РјРµРЅСЋ</button>
         </article>
-        <div id="planResult" class="plan-result"><p class="empty">AI составит 7 дней питания, рецепты и список покупок в пределах суммы.</p></div>
+        <div id="planResult" class="plan-result"><p class="empty">AI СЃРѕСЃС‚Р°РІРёС‚ 7 РґРЅРµР№ РїРёС‚Р°РЅРёСЏ, СЂРµС†РµРїС‚С‹ Рё СЃРїРёСЃРѕРє РїРѕРєСѓРїРѕРє РІ РїСЂРµРґРµР»Р°С… СЃСѓРјРјС‹.</p></div>
       </section>
 
       <section class="view" id="profileView">
-        <div class="greeting"><p>НАСТРОЙКИ</p><h2>Мой профиль</h2></div>
+        <div class="greeting"><p>РќРђРЎРўР РћР™РљР</p><h2>РњРѕР№ РїСЂРѕС„РёР»СЊ</h2></div>
         <form id="profileForm" class="profile-form">
-          <div class="two"><label>Имя<input name="name" required value="Мой профиль"></label><label>Пол<select name="sex"><option value="male">Мужской</option><option value="female">Женский</option></select></label></div>
-          <div class="three"><label>Возраст<input name="age" type="number" required min="14" max="90" value="25"></label><label>Рост, см<input name="height_cm" type="number" required min="120" max="230" value="175"></label><label>Вес, кг<input name="weight_kg" type="number" step="0.1" required min="35" max="300" value="65"></label></div>
-          <div class="two"><label>Цель, кг<input name="target_weight_kg" type="number" step="0.1" required value="72"></label><label>Приёмов еды<input name="meals_per_day" type="number" min="2" max="8" value="4"></label></div>
-          <label>Активность<select name="activity"><option value="low">Почти нет спорта</option><option value="light">1–2 тренировки</option><option value="medium" selected>3–4 тренировки</option><option value="high">5–6 тренировок</option><option value="very_high">Тяжёлые нагрузки</option></select></label>
-          <label>Аллергии и ограничения<input name="allergies" placeholder="Если нет — оставить пустым"></label>
-          <label>Что не люблю<input name="dislikes" placeholder="Например: рыба, грибы"></label>
-          <div class="two"><label>Город<input name="city" placeholder="Ярославль"></label><label>Магазины<input name="stores" placeholder="Пятёрочка"></label></div>
-          <label>Обычный бюджет, ₽<input name="weekly_budget" type="number" min="500" value="4000"></label>
-          <button class="primary" type="submit">Сохранить и рассчитать КБЖУ</button>
+          <div class="two"><label>РРјСЏ<input name="name" required value="РњРѕР№ РїСЂРѕС„РёР»СЊ"></label><label>РџРѕР»<select name="sex"><option value="male">РњСѓР¶СЃРєРѕР№</option><option value="female">Р–РµРЅСЃРєРёР№</option></select></label></div>
+          <div class="three"><label>Р’РѕР·СЂР°СЃС‚<input name="age" type="number" required min="14" max="90" value="25"></label><label>Р РѕСЃС‚, СЃРј<input name="height_cm" type="number" required min="120" max="230" value="175"></label><label>Р’РµСЃ, РєРі<input name="weight_kg" type="number" step="0.1" required min="35" max="300" value="65"></label></div>
+          <div class="two"><label>Р¦РµР»СЊ, РєРі<input name="target_weight_kg" type="number" step="0.1" required value="72"></label><label>РџСЂРёС‘РјРѕРІ РµРґС‹<input name="meals_per_day" type="number" min="2" max="8" value="4"></label></div>
+          <label>РђРєС‚РёРІРЅРѕСЃС‚СЊ<select name="activity"><option value="low">РџРѕС‡С‚Рё РЅРµС‚ СЃРїРѕСЂС‚Р°</option><option value="light">1вЂ“2 С‚СЂРµРЅРёСЂРѕРІРєРё</option><option value="medium" selected>3вЂ“4 С‚СЂРµРЅРёСЂРѕРІРєРё</option><option value="high">5вЂ“6 С‚СЂРµРЅРёСЂРѕРІРѕРє</option><option value="very_high">РўСЏР¶С‘Р»С‹Рµ РЅР°РіСЂСѓР·РєРё</option></select></label>
+          <label>РђР»Р»РµСЂРіРёРё Рё РѕРіСЂР°РЅРёС‡РµРЅРёСЏ<input name="allergies" placeholder="Р•СЃР»Рё РЅРµС‚ вЂ” РѕСЃС‚Р°РІРёС‚СЊ РїСѓСЃС‚С‹Рј"></label>
+          <label>Р§С‚Рѕ РЅРµ Р»СЋР±Р»СЋ<input name="dislikes" placeholder="РќР°РїСЂРёРјРµСЂ: СЂС‹Р±Р°, РіСЂРёР±С‹"></label>
+          <div class="two"><label>Р“РѕСЂРѕРґ<input name="city" placeholder="РЇСЂРѕСЃР»Р°РІР»СЊ"></label><label>РњР°РіР°Р·РёРЅС‹<input name="stores" placeholder="РџСЏС‚С‘СЂРѕС‡РєР°"></label></div>
+          <label>РћР±С‹С‡РЅС‹Р№ Р±СЋРґР¶РµС‚, в‚Ѕ<input name="weekly_budget" type="number" min="500" value="4000"></label>
+          <button class="primary" type="submit">РЎРѕС…СЂР°РЅРёС‚СЊ Рё СЂР°СЃСЃС‡РёС‚Р°С‚СЊ РљР‘Р–РЈ</button>
         </form>
         <article id="targetCard" class="target-card"></article>
-        <div class="weight-row"><input id="weightInput" type="number" step="0.1" placeholder="Текущий вес"><button id="weightSave">Записать вес</button></div>
-        <div id="weightCurrent" class="weight-current">История веса пока пуста</div>
+        <div class="weight-row"><input id="weightInput" type="number" step="0.1" placeholder="РўРµРєСѓС‰РёР№ РІРµСЃ"><button id="weightSave">Р—Р°РїРёСЃР°С‚СЊ РІРµСЃ</button></div>
+        <div id="weightCurrent" class="weight-current">РСЃС‚РѕСЂРёСЏ РІРµСЃР° РїРѕРєР° РїСѓСЃС‚Р°</div>
         <div id="weightHistory" class="weight-history"></div>
-        <p class="fine-print">Сервис не заменяет врача. При заболеваниях, нарушениях пищевого поведения или специальных ограничениях рацион нужно согласовать со специалистом.</p>
+        <p class="fine-print">РЎРµСЂРІРёСЃ РЅРµ Р·Р°РјРµРЅСЏРµС‚ РІСЂР°С‡Р°. РџСЂРё Р·Р°Р±РѕР»РµРІР°РЅРёСЏС…, РЅР°СЂСѓС€РµРЅРёСЏС… РїРёС‰РµРІРѕРіРѕ РїРѕРІРµРґРµРЅРёСЏ РёР»Рё СЃРїРµС†РёР°Р»СЊРЅС‹С… РѕРіСЂР°РЅРёС‡РµРЅРёСЏС… СЂР°С†РёРѕРЅ РЅСѓР¶РЅРѕ СЃРѕРіР»Р°СЃРѕРІР°С‚СЊ СЃРѕ СЃРїРµС†РёР°Р»РёСЃС‚РѕРј.</p>
       </section>
     </main>
 
     <nav>
-      <button class="active" data-view="todayView"><span>◉</span>Сегодня</button>
-      <button data-view="cameraView"><span>＋</span>Фото</button>
-      <button data-view="planView"><span>▦</span>Рацион</button>
-      <button data-view="profileView"><span>○</span>Профиль</button>
+      <button class="active" data-view="todayView"><span>в—‰</span>РЎРµРіРѕРґРЅСЏ</button>
+      <button data-view="cameraView"><span>пј‹</span>Р¤РѕС‚Рѕ</button>
+      <button data-view="planView"><span>в–¦</span>Р Р°С†РёРѕРЅ</button>
+      <button data-view="profileView"><span>в—‹</span>РџСЂРѕС„РёР»СЊ</button>
     </nav>
   </div>
 
-  <dialog id="manualDialog"><form id="manualForm" method="dialog"><div class="dialog-head"><h3>Добавить вручную</h3><button value="cancel">×</button></div><label>Название<input name="name" required placeholder="Творог с бананом"></label><div class="two"><label>Вес, г<input name="grams" type="number" value="0"></label><label>Ккал<input name="kcal" type="number" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Добавить</button></form></dialog>
-  <dialog id="editDialog"><form id="editForm" method="dialog"><div class="dialog-head"><h3>Проверить оценку</h3><button value="cancel">×</button></div><input name="meal_id" type="hidden"><label>Название<input name="name" required></label><div class="two"><label>Вес, г<input name="grams" type="number" step="1"></label><label>Ккал<input name="kcal" type="number" step="1" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Сохранить изменения</button></form></dialog>
+  <dialog id="manualDialog"><form id="manualForm" method="dialog"><div class="dialog-head"><h3>Р”РѕР±Р°РІРёС‚СЊ РІСЂСѓС‡РЅСѓСЋ</h3><button value="cancel">Г—</button></div><label>РќР°Р·РІР°РЅРёРµ<input name="name" required placeholder="РўРІРѕСЂРѕРі СЃ Р±Р°РЅР°РЅРѕРј"></label><div class="two"><label>Р’РµСЃ, Рі<input name="grams" type="number" value="0"></label><label>РљРєР°Р»<input name="kcal" type="number" required></label></div><div class="three"><label>Р‘РµР»РєРё<input name="protein" type="number" step="0.1" required></label><label>Р–РёСЂС‹<input name="fat" type="number" step="0.1" required></label><label>РЈРіР»РµРІРѕРґС‹<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Р”РѕР±Р°РІРёС‚СЊ</button></form></dialog>
+  <dialog id="editDialog"><form id="editForm" method="dialog"><div class="dialog-head"><h3>РџСЂРѕРІРµСЂРёС‚СЊ РѕС†РµРЅРєСѓ</h3><button value="cancel">Г—</button></div><input name="meal_id" type="hidden"><label>РќР°Р·РІР°РЅРёРµ<input name="name" required></label><div class="two"><label>Р’РµСЃ, Рі<input name="grams" type="number" step="1"></label><label>РљРєР°Р»<input name="kcal" type="number" step="1" required></label></div><div class="three"><label>Р‘РµР»РєРё<input name="protein" type="number" step="0.1" required></label><label>Р–РёСЂС‹<input name="fat" type="number" step="0.1" required></label><label>РЈРіР»РµРІРѕРґС‹<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">РЎРѕС…СЂР°РЅРёС‚СЊ РёР·РјРµРЅРµРЅРёСЏ</button></form></dialog>
   <div class="toast" id="toast"></div>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=1.0.3"></script>
 </body>
 </html>
+
