@@ -20,7 +20,7 @@ class NutritionAI:
 
     def _client(self) -> OpenAI:
         if not self.settings.openai_api_key:
-            raise AIUnavailableError("Добавьте OPENAI_API_KEY в файл .env")
+            raise AIUnavailableError("AI-сервис не подключён. Укажите OPENAI_API_KEY в настройках сервера.")
         proxy = next(
             (os.getenv(name, "") for name in ("ALL_PROXY", "HTTPS_PROXY", "HTTP_PROXY")
              if os.getenv(name, "").lower().startswith("socks")),
@@ -34,7 +34,12 @@ class NutritionAI:
                     "Обнаружен SOCKS-прокси, но не установлен модуль socksio. "
                     "Запустите УСТАНОВИТЬ_WINDOWS.bat повторно."
                 ) from exc
-        return OpenAI(api_key=self.settings.openai_api_key)
+        return OpenAI(api_key=self.settings.openai_api_key, timeout=90.0, max_retries=1)
+
+    def _parse(self, **kwargs):
+        # Each worker owns and closes its HTTP connection pool.
+        with self._client() as client:
+            return client.responses.parse(**kwargs)
 
     async def _call(self, request):
         try:
@@ -60,7 +65,7 @@ class NutritionAI:
         encoded = base64.b64encode(image).decode("ascii")
 
         def request() -> PhotoAnalysis:
-            response = self._client().responses.parse(
+            response = self._parse(
                 model=self.settings.openai_model,
                 input=[
                     {
@@ -127,7 +132,7 @@ class NutritionAI:
 """
 
         def request() -> WeekPlan:
-            response = self._client().responses.parse(
+            response = self._parse(
                 model=self.settings.openai_model,
                 input=[
                     {

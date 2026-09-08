@@ -57,7 +57,8 @@ def save_profile(request: Request, payload: ProfileInput):
 
 
 @router.get("/dashboard")
-def dashboard(request: Request, day: date = date.today()):
+def dashboard(request: Request, day: date | None = None):
+    day = day or date.today()
     user_id = _uid(request)
     record = request.app.state.db.get_profile(user_id)
     if not record:
@@ -112,7 +113,7 @@ async def add_photo_meal(
         raise HTTPException(status_code=409, detail="Сначала заполните профиль")
     if image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=415, detail="Нужна фотография JPG, PNG или WEBP")
-    content = await image.read()
+    content = await image.read(12 * 1024 * 1024 + 1)
     if len(content) > 12 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Фотография должна быть меньше 12 МБ")
     try:
@@ -120,7 +121,7 @@ async def add_photo_meal(
     except AIUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Unexpected photo analysis error")
+        logger.error("Unexpected photo analysis error: %s", type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail="Не удалось проанализировать фото. Повторите позже.",
@@ -175,7 +176,7 @@ async def create_plan(request: Request, payload: PlanRequest):
     except AIUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        logger.exception("Unexpected week plan error")
+        logger.error("Unexpected week plan error: %s", type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail="Не удалось составить план. Повторите позже.",
@@ -187,6 +188,10 @@ async def create_plan(request: Request, payload: PlanRequest):
 @router.post("/weight")
 def add_weight(request: Request, payload: WeightInput):
     user_id = _check_payload_user(request, payload.telegram_user_id)
+    if not request.app.state.db.get_profile(user_id):
+        raise HTTPException(status_code=409, detail="Сначала заполните профиль")
+    if payload.measured_on > date.today():
+        raise HTTPException(status_code=422, detail="Дата взвешивания не может быть в будущем")
     request.app.state.db.save_weight(user_id, str(payload.measured_on), payload.weight_kg)
     return {
         "ok": True,

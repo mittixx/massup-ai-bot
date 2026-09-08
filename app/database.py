@@ -192,8 +192,11 @@ class Database:
                 (user_id, measured_on, weight_kg, self._now()),
             )
             db.execute(
-                "UPDATE profiles SET weight_kg=?, updated_at=? WHERE telegram_user_id=?",
-                (weight_kg, self._now(), user_id),
+                """UPDATE profiles SET weight_kg=(
+                    SELECT weight_kg FROM weights WHERE telegram_user_id=?
+                    ORDER BY measured_on DESC LIMIT 1
+                ), updated_at=? WHERE telegram_user_id=?""",
+                (user_id, self._now(), user_id),
             )
 
     def weights(self, user_id: int, limit: int = 30) -> list[dict[str, Any]]:

@@ -11,13 +11,24 @@ const $ = id => document.getElementById(id);
 const toast = text => { $("toast").textContent=text; $("toast").classList.add("show"); setTimeout(()=>$("toast").classList.remove("show"),2600); };
 async function api(path, options={}) {
   options.headers = {...headers(), ...(options.headers||{})};
-  const response = await fetch(path, options);
-  if (!response.ok) { let detail="Ошибка"; try { detail=(await response.json()).detail; } catch{} throw new Error(detail); }
+  const response = await fetch(path, {...options, cache:"no-store"});
+  if (!response.ok) {
+    let detail = response.status >= 500 ? "Сервер временно недоступен. Повтори попытку позже." : "Не удалось выполнить запрос";
+    try {
+      const body = await response.json();
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (Array.isArray(body.detail)) detail = "Проверь заполнение полей и допустимые значения";
+    } catch {}
+    throw new Error(detail);
+  }
   return response.json();
 }
 function switchView(id){ document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id===id)); document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id)); window.scrollTo({top:0,behavior:"smooth"}); if(id==="todayView")loadDashboard(); if(id==="profileView")loadProgress(); }
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
 $("profileShortcut").onclick=()=>switchView("profileView");
+document.querySelectorAll("[data-close-dialog]").forEach(button => {
+  button.onclick = () => button.closest("dialog").close();
+});
 
 function fillTargets(p){
   $("kcalTarget").textContent=p.targets.calories; $("proteinTarget").textContent=p.targets.protein; $("fatTarget").textContent=p.targets.fat; $("carbsTarget").textContent=p.targets.carbs;
@@ -62,7 +73,16 @@ function renderPlan(p){
   $("planResult").innerHTML=`<article class="plan-summary"><h3>${escapeHtml(p.title)}</h3><p>Расчётная корзина: <b>${p.estimated_total} ₽</b> из ${p.budget} ₽</p><small>Цены ориентировочные и зависят от магазина.</small></article>${days}<article class="grocery-card"><h3>Список покупок</h3>${groceries}</article><article class="grocery-card"><h3>План готовки</h3><ol>${p.prep_plan.map(x=>`<li>${escapeHtml(x)}</li>`).join("")}</ol></article>`;
 }
 
-$("weightSave").onclick=async()=>{const input=$("weightInput"),weight=Number(input.value);if(!weight)return toast("Укажи вес");try{await api("/api/weight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_user_id:userId,weight_kg:weight})});$("profileForm").elements.weight_kg.value=weight;input.value="";toast(`Вес ${weight} кг записан`);await Promise.all([loadProfile(),loadProgress()]);}catch(e){toast(e.message)}};
+$("weightSave").onclick=async()=>{
+  const input=$("weightInput"), button=$("weightSave"), weight=Number(input.value.replace(",","."));
+  if(!Number.isFinite(weight)||weight<35||weight>300)return toast("Укажи вес от 35 до 300 кг");
+  button.disabled=true;
+  try{
+    await api("/api/weight",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_user_id:userId,weight_kg:weight})});
+    $("profileForm").elements.weight_kg.value=weight; input.value="";
+    toast(`Вес ${weight} кг записан`); await Promise.all([loadProfile(),loadProgress()]);
+  }catch(e){toast(e.message)}finally{button.disabled=false;}
+};
 async function loadProgress(){try{const d=await api("/api/progress"),history=$("weightHistory"),current=$("weightCurrent");if(!d.weights.length){current.textContent="История веса пока пуста";history.innerHTML="";return;}const values=d.weights.map(x=>x.weight_kg),min=Math.min(...values)-1,max=Math.max(...values)+1,last=d.weights[d.weights.length-1],dateText=new Date(`${last.measured_on}T00:00:00`).toLocaleDateString("ru-RU",{day:"numeric",month:"long"});current.innerHTML=`Текущий вес <strong>${last.weight_kg} кг</strong><span>${dateText}</span>`;history.innerHTML=d.weights.map(x=>{const shortDate=new Date(`${x.measured_on}T00:00:00`).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"}),height=30+(x.weight_kg-min)/(max-min)*45;return `<div class="weight-point" title="${x.measured_on}: ${x.weight_kg} кг" style="height:${height}px"><strong>${x.weight_kg} кг</strong><span>${shortDate}</span></div>`;}).join("");}catch(e){toast(e.message)}}
 
 $("todayDate").textContent=new Intl.DateTimeFormat("ru-RU",{weekday:"long",day:"numeric",month:"long"}).format(new Date());

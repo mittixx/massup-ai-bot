@@ -14,7 +14,6 @@ from app.nutrition import calculate_targets
 from app.schemas import ProfileInput
 
 
-router = Router()
 _db: Database | None = None
 _ai: NutritionAI | None = None
 _settings: Settings | None = None
@@ -48,7 +47,6 @@ def app_keyboard() -> InlineKeyboardMarkup | None:
     ]])
 
 
-@router.message(CommandStart())
 async def start(message: Message):
     if await reject_if_needed(message):
         return
@@ -62,14 +60,12 @@ async def start(message: Message):
     )
 
 
-@router.message(Command("app"))
 async def open_app(message: Message):
     if await reject_if_needed(message):
         return
     await message.answer("В Mini App находятся дневник, меню, покупки и прогресс.", reply_markup=app_keyboard())
 
 
-@router.message(Command("today"))
 async def today(message: Message):
     if await reject_if_needed(message) or not message.from_user or _db is None:
         return
@@ -91,6 +87,9 @@ async def today(message: Message):
 
 async def generate_plan_for_message(message: Message, budget: int):
     if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
+        return
+    if not 500 <= budget <= 200000:
+        await message.answer("Укажи бюджет от 500 до 200000 рублей.")
         return
     record = _db.get_profile(message.from_user.id)
     if not record:
@@ -119,8 +118,9 @@ async def generate_plan_for_message(message: Message, budget: int):
     )
 
 
-@router.message(Command("plan"))
 async def plan_command(message: Message):
+    if await reject_if_needed(message):
+        return
     match = re.search(r"\d[\d\s]*", message.text or "")
     if not match:
         await message.answer("Напиши сумму, например: /plan 4000")
@@ -128,7 +128,6 @@ async def plan_command(message: Message):
     await generate_plan_for_message(message, int(match.group().replace(" ", "")))
 
 
-@router.message(F.photo)
 async def photo(message: Message, bot: Bot):
     if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
         return
@@ -136,9 +135,9 @@ async def photo(message: Message, bot: Bot):
         await message.answer("Сначала открой Mini App и заполни профиль.", reply_markup=app_keyboard())
         return
     status = await message.answer("Рассматриваю блюдо и считаю КБЖУ…")
-    file = await bot.get_file(message.photo[-1].file_id)
-    stream = await bot.download_file(file.file_path)
     try:
+        file = await bot.get_file(message.photo[-1].file_id)
+        stream = await bot.download_file(file.file_path)
         analysis = await _ai.analyze_photo(stream.read(), "image/jpeg")
     except AIUnavailableError as exc:
         await status.edit_text(str(exc))
@@ -165,8 +164,9 @@ async def photo(message: Message, bot: Bot):
     )
 
 
-@router.message(F.text)
 async def text_budget(message: Message):
+    if await reject_if_needed(message):
+        return
     text = (message.text or "").lower()
     match = re.search(r"\b(\d[\d\s]{2,})\s*(?:₽|руб)?\b", text)
     if match and any(word in text for word in ("недел", "бюджет", "купить", "меню")):
@@ -182,5 +182,12 @@ def create_dispatcher(db: Database, ai: NutritionAI, settings: Settings) -> tupl
     configure_bot(db, ai, settings)
     bot = Bot(settings.bot_token)
     dispatcher = Dispatcher()
+    router = Router()
+    router.message.register(start, CommandStart())
+    router.message.register(open_app, Command("app"))
+    router.message.register(today, Command("today"))
+    router.message.register(plan_command, Command("plan"))
+    router.message.register(photo, F.photo)
+    router.message.register(text_budget, F.text)
     dispatcher.include_router(router)
     return bot, dispatcher
