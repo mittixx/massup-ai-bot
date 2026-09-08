@@ -41,6 +41,16 @@ def test_health_and_profile_flow(tmp_path):
         assert client.delete(f"/api/meals/{meal_id}", headers=headers).status_code == 200
         assert client.get("/api/dashboard", headers=headers).json()["meals"] == []
 
+        weight_response = client.post(
+            "/api/weight",
+            headers=headers,
+            json={"telegram_user_id": 1, "weight_kg": 71.2},
+        )
+        assert weight_response.status_code == 200
+        assert weight_response.json()["weight"]["weight_kg"] == 71.2
+        progress = client.get("/api/progress", headers=headers).json()
+        assert progress["weights"][-1]["weight_kg"] == 71.2
+
 
 def test_cannot_write_other_user(tmp_path):
     with make_client(tmp_path) as client:

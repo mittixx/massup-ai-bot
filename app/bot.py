@@ -105,8 +105,8 @@ async def generate_plan_for_message(message: Message, budget: int):
     except AIUnavailableError as exc:
         await wait.edit_text(str(exc))
         return
-    except Exception as exc:
-        await wait.edit_text(f"Не удалось составить меню: {exc}")
+    except Exception:
+        await wait.edit_text("Не удалось составить меню. Повтори попытку позже.")
         return
     _db.save_plan(message.from_user.id, budget, plan.model_dump())
     first = plan.days[0]
@@ -140,8 +140,11 @@ async def photo(message: Message, bot: Bot):
     stream = await bot.download_file(file.file_path)
     try:
         analysis = await _ai.analyze_photo(stream.read(), "image/jpeg")
-    except Exception as exc:
-        await status.edit_text(f"Не удалось распознать фото: {exc}")
+    except AIUnavailableError as exc:
+        await status.edit_text(str(exc))
+        return
+    except Exception:
+        await status.edit_text("Не удалось распознать фото. Повтори попытку позже.")
         return
     meal = _db.add_meal({
         "telegram_user_id": message.from_user.id,
@@ -181,4 +184,3 @@ def create_dispatcher(db: Database, ai: NutritionAI, settings: Settings) -> tupl
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     return bot, dispatcher
-

@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#111614">
   <title>MassUp AI</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/weight.css">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -72,6 +73,7 @@
         </form>
         <article id="targetCard" class="target-card"></article>
         <div class="weight-row"><input id="weightInput" type="number" step="0.1" placeholder="Текущий вес"><button id="weightSave">Записать вес</button></div>
+        <div id="weightCurrent" class="weight-current">История веса пока пуста</div>
         <div id="weightHistory" class="weight-history"></div>
         <p class="fine-print">Сервис не заменяет врача. При заболеваниях, нарушениях пищевого поведения или специальных ограничениях рацион нужно согласовать со специалистом.</p>
       </section>

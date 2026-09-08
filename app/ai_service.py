@@ -4,7 +4,7 @@ import asyncio
 import base64
 import os
 
-from openai import OpenAI
+from openai import APIConnectionError, APIStatusError, AuthenticationError, OpenAI, RateLimitError
 
 from app.config import Settings
 from app.schemas import PhotoAnalysis, ProfileInput, WeekPlan
@@ -35,6 +35,26 @@ class NutritionAI:
                     "Запустите УСТАНОВИТЬ_WINDOWS.bat повторно."
                 ) from exc
         return OpenAI(api_key=self.settings.openai_api_key)
+
+    async def _call(self, request):
+        try:
+            return await asyncio.to_thread(request)
+        except AuthenticationError as exc:
+            raise AIUnavailableError(
+                "AI-сервис не подключён. Обновите OPENAI_API_KEY в настройках сервера."
+            ) from exc
+        except RateLimitError as exc:
+            raise AIUnavailableError(
+                "Лимит запросов к AI временно исчерпан. Повторите позже."
+            ) from exc
+        except APIConnectionError as exc:
+            raise AIUnavailableError(
+                "Не удалось связаться с AI-сервисом. Повторите позже."
+            ) from exc
+        except APIStatusError as exc:
+            raise AIUnavailableError(
+                "AI-сервис временно не выполнил запрос. Повторите позже."
+            ) from exc
 
     async def analyze_photo(self, image: bytes, mime_type: str = "image/jpeg") -> PhotoAnalysis:
         encoded = base64.b64encode(image).decode("ascii")
@@ -71,7 +91,7 @@ class NutritionAI:
                 raise AIUnavailableError("Модель не вернула результат анализа")
             return response.output_parsed
 
-        return await asyncio.to_thread(request)
+        return await self._call(request)
 
     async def make_week_plan(
         self,
@@ -122,4 +142,4 @@ class NutritionAI:
                 raise AIUnavailableError("Модель не вернула недельный план")
             return response.output_parsed
 
-        return await asyncio.to_thread(request)
+        return await self._call(request)

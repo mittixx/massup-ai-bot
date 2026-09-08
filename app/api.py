@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import logging
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
@@ -15,6 +16,9 @@ from app.schemas import (
     ProfileResponse,
     WeightInput,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api")
@@ -116,7 +120,11 @@ async def add_photo_meal(
     except AIUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Не удалось проанализировать фото: {exc}") from exc
+        logger.exception("Unexpected photo analysis error")
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось проанализировать фото. Повторите позже.",
+        ) from exc
 
     meal = request.app.state.db.add_meal({
         "telegram_user_id": user_id,
@@ -167,7 +175,11 @@ async def create_plan(request: Request, payload: PlanRequest):
     except AIUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Не удалось составить план: {exc}") from exc
+        logger.exception("Unexpected week plan error")
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось составить план. Повторите позже.",
+        ) from exc
     request.app.state.db.save_plan(user_id, payload.budget, plan.model_dump())
     return plan
 
@@ -176,7 +188,13 @@ async def create_plan(request: Request, payload: PlanRequest):
 def add_weight(request: Request, payload: WeightInput):
     user_id = _check_payload_user(request, payload.telegram_user_id)
     request.app.state.db.save_weight(user_id, str(payload.measured_on), payload.weight_kg)
-    return {"ok": True}
+    return {
+        "ok": True,
+        "weight": {
+            "measured_on": str(payload.measured_on),
+            "weight_kg": payload.weight_kg,
+        },
+    }
 
 
 @router.get("/progress")
