@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <meta name="theme-color" content="#111614">
   <title>MassUp AI</title>
-  <link rel="stylesheet" href="/static/style.css?v=1.1.0">
-  <link rel="stylesheet" href="/static/weight.css?v=1.1.0">
-  <link rel="stylesheet" href="/static/coach.css?v=1.1.0">
+  <link rel="stylesheet" href="/static/style.css?v=1.2.0">
+  <link rel="stylesheet" href="/static/weight.css?v=1.2.0">
+  <link rel="stylesheet" href="/static/coach.css?v=1.2.0">
+  <link rel="stylesheet" href="/static/admin.css?v=1.2.0">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -120,6 +121,38 @@
         </article>
       </section>
 
+      <section class="view" id="adminView">
+        <div class="greeting"><p>ТОЛЬКО ДЛЯ ВЛАДЕЛЬЦА</p><h2>Управление ботом</h2></div>
+        <article class="admin-status">
+          <div><span class="card-kicker">СОСТОЯНИЕ СИСТЕМЫ</span><h3 id="adminStatusTitle">Проверяю сервер…</h3><p id="adminStatusText">Загружаю актуальные показатели</p></div>
+          <i class="status-dot" id="adminStatusDot"></i>
+        </article>
+
+        <div class="admin-metrics" id="adminMetrics"></div>
+
+        <article class="admin-card">
+          <div class="admin-card-head"><div><h3>Активность за 14 дней</h3><p>Пользователи и обращения к AI</p></div><button class="admin-refresh" id="adminRefresh">Обновить</button></div>
+          <div class="admin-trend" id="adminTrend"></div>
+          <div class="trend-legend"><span><i class="active-key"></i>Активные</span><span><i class="ai-key"></i>AI-запросы</span></div>
+        </article>
+
+        <article class="admin-card">
+          <div class="admin-card-head"><div><h3>Система</h3><p>Без секретных ключей и приватных настроек</p></div></div>
+          <div class="admin-runtime" id="adminRuntime"></div>
+        </article>
+
+        <article class="admin-card">
+          <div class="admin-card-head"><div><h3>Пользователи</h3><p id="adminUsersCount">Загружаю список…</p></div></div>
+          <form class="admin-search" id="adminSearchForm"><input id="adminSearch" placeholder="Имя или Telegram ID"><button>Найти</button></form>
+          <div class="admin-users" id="adminUsers"></div>
+        </article>
+
+        <article class="admin-card">
+          <div class="admin-card-head"><div><h3>Последние события</h3><p>AI-запросы, действия и безопасные типы ошибок</p></div></div>
+          <div class="admin-events" id="adminEvents"></div>
+        </article>
+      </section>
+
       <section class="view" id="profileView">
         <div class="greeting"><p>НАСТРОЙКИ</p><h2>Мой профиль</h2></div>
         <form id="profileForm" class="profile-form">
@@ -141,18 +174,19 @@
       </section>
     </main>
 
-    <nav>
+    <nav id="mainNav">
       <button class="active" data-view="todayView"><span>◉</span>Сегодня</button>
       <button data-view="cameraView"><span>＋</span>Фото</button>
       <button data-view="planView"><span>▦</span>Рацион</button>
       <button data-view="coachView"><span>✦</span>AI</button>
       <button data-view="profileView"><span>○</span>Профиль</button>
+      <button class="hidden" id="adminNav" data-view="adminView"><span>◆</span>Админ</button>
     </nav>
   </div>
 
   <dialog id="manualDialog"><form id="manualForm" method="dialog"><div class="dialog-head"><h3>Добавить вручную</h3><button type="button" data-close-dialog aria-label="Закрыть">×</button></div><label>Название<input name="name" required placeholder="Творог с бананом"></label><div class="two"><label>Вес, г<input name="grams" type="number" value="0"></label><label>Ккал<input name="kcal" type="number" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Добавить</button></form></dialog>
   <dialog id="editDialog"><form id="editForm" method="dialog"><div class="dialog-head"><h3>Проверить оценку</h3><button type="button" data-close-dialog aria-label="Закрыть">×</button></div><input name="meal_id" type="hidden"><label>Название<input name="name" required></label><div class="two"><label>Вес, г<input name="grams" type="number" step="1"></label><label>Ккал<input name="kcal" type="number" step="1" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Сохранить изменения</button></form></dialog>
   <div class="toast" id="toast"></div>
-  <script src="/static/app.js?v=1.1.0"></script>
+  <script src="/static/app.js?v=1.2.0"></script>
 </body>
 </html>

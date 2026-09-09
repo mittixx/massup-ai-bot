@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from app.ai_service import AIUnavailableError
-from app.auth import current_user_id
+from app.auth import current_owner_id, current_user_id
 from app.insights import build_insights, meal_totals
 from app.nutrition import calculate_targets, percent
 from app.schemas import (
@@ -29,6 +29,23 @@ router = APIRouter(prefix="/api")
 
 def _uid(request: Request) -> int:
     return current_user_id(request, request.app.state.settings)
+
+
+def _admin_uid(request: Request) -> int:
+    return current_owner_id(request, request.app.state.settings)
+
+
+def _record_event(
+    request: Request,
+    user_id: int | None,
+    event_type: str,
+    status: str = "ok",
+    detail: str = "",
+) -> None:
+    try:
+        request.app.state.db.record_event(user_id, event_type, status, detail)
+    except Exception as exc:
+        logger.warning("ADMIN_EVENT_WRITE_FAILED type=%s", type(exc).__name__)
 
 
 def _check_payload_user(request: Request, payload_user_id: int) -> int:
@@ -71,6 +88,7 @@ def save_profile(request: Request, payload: ProfileInput):
     record = request.app.state.db.upsert_profile(data)
     profile = ProfileInput(**record)
     request.app.state.db.save_weight(user_id, str(date.today()), profile.weight_kg)
+    _record_event(request, user_id, "profile_saved")
     return ProfileResponse(**profile.model_dump(), targets=calculate_targets(profile))
 
 
@@ -114,9 +132,11 @@ def add_manual_meal(request: Request, payload: ManualMealInput):
     user_id = _check_payload_user(request, payload.telegram_user_id)
     if not request.app.state.db.get_profile(user_id):
         raise HTTPException(status_code=409, detail="Сначала заполните профиль")
-    return request.app.state.db.add_meal({
+    meal = request.app.state.db.add_meal({
         **payload.model_dump(), "telegram_user_id": user_id, "source": "manual"
     })
+    _record_event(request, user_id, "meal_manual")
+    return meal
 
 
 @router.post("/meals/photo")
@@ -137,8 +157,10 @@ async def add_photo_meal(
     try:
         analysis = await request.app.state.ai.analyze_photo(content, image.content_type or "image/jpeg")
     except AIUnavailableError as exc:
+        _record_event(request, user_id, "ai_photo", "error", "AIUnavailableError")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
+        _record_event(request, user_id, "ai_photo", "error", type(exc).__name__)
         logger.error("Unexpected photo analysis error: %s", type(exc).__name__)
         raise HTTPException(
             status_code=502,
@@ -159,6 +181,7 @@ async def add_photo_meal(
         "confidence": analysis.confidence,
         "details": analysis.model_dump(),
     })
+    _record_event(request, user_id, "ai_photo")
     return {"meal": meal, "analysis": analysis}
 
 
@@ -168,6 +191,7 @@ def correct_meal(request: Request, meal_id: int, payload: MealCorrection):
     meal = request.app.state.db.update_meal(meal_id, user_id, payload.model_dump())
     if not meal:
         raise HTTPException(status_code=404, detail="Приём пищи не найден")
+    _record_event(request, user_id, "meal_corrected")
     return meal
 
 
@@ -176,6 +200,7 @@ def remove_meal(request: Request, meal_id: int):
     user_id = _uid(request)
     if not request.app.state.db.delete_meal(meal_id, user_id):
         raise HTTPException(status_code=404, detail="Приём пищи не найден")
+    _record_event(request, user_id, "meal_deleted")
     return {"ok": True}
 
 
@@ -192,14 +217,17 @@ async def create_plan(request: Request, payload: PlanRequest):
             profile, targets, payload.budget, payload.pantry, payload.wishes
         )
     except AIUnavailableError as exc:
+        _record_event(request, user_id, "ai_plan", "error", "AIUnavailableError")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
+        _record_event(request, user_id, "ai_plan", "error", type(exc).__name__)
         logger.error("Unexpected week plan error: %s", type(exc).__name__)
         raise HTTPException(
             status_code=502,
             detail="Не удалось составить план. Повторите позже.",
         ) from exc
     request.app.state.db.save_plan(user_id, payload.budget, plan.model_dump())
+    _record_event(request, user_id, "ai_plan")
     return plan
 
 
@@ -211,6 +239,7 @@ def add_weight(request: Request, payload: WeightInput):
     if payload.measured_on > date.today():
         raise HTTPException(status_code=422, detail="Дата взвешивания не может быть в будущем")
     request.app.state.db.save_weight(user_id, str(payload.measured_on), payload.weight_kg)
+    _record_event(request, user_id, "weight_saved")
     return {
         "ok": True,
         "weight": {
@@ -248,7 +277,7 @@ async def advice(request: Request, payload: AdviceRequest):
         raise HTTPException(status_code=422, detail="Опишите продукты или блюдо")
     profile, targets, totals, remaining = _profile_and_context(request, user_id)
     try:
-        return await request.app.state.ai.make_advice(
+        result = await request.app.state.ai.make_advice(
             profile,
             targets.model_dump(),
             totals,
@@ -258,10 +287,14 @@ async def advice(request: Request, payload: AdviceRequest):
             payload.query.strip(),
         )
     except AIUnavailableError as exc:
+        _record_event(request, user_id, "ai_advice", "error", "AIUnavailableError")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
+        _record_event(request, user_id, "ai_advice", "error", type(exc).__name__)
         logger.error("Unexpected advice error: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Не удалось подготовить рекомендацию. Повторите позже.") from exc
+    _record_event(request, user_id, "ai_advice", detail=payload.mode)
+    return result
 
 
 @router.post("/label")
@@ -275,14 +308,18 @@ async def label_analysis(request: Request, image: UploadFile = File(...)):
     if len(content) > 12 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Фотография должна быть меньше 12 МБ")
     try:
-        return await request.app.state.ai.analyze_label(
+        result = await request.app.state.ai.analyze_label(
             content, image.content_type or "image/jpeg"
         )
     except AIUnavailableError as exc:
+        _record_event(request, user_id, "ai_label", "error", "AIUnavailableError")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
+        _record_event(request, user_id, "ai_label", "error", type(exc).__name__)
         logger.error("Unexpected label analysis error: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Не удалось прочитать этикетку. Повторите позже.") from exc
+    _record_event(request, user_id, "ai_label")
+    return result
 
 
 @router.get("/reminders")
@@ -297,4 +334,39 @@ def save_reminders(request: Request, payload: ReminderSettingsInput):
         raise HTTPException(status_code=409, detail="Сначала заполните профиль")
     data = payload.model_dump()
     data["telegram_user_id"] = user_id
-    return request.app.state.db.save_reminders(data)
+    result = request.app.state.db.save_reminders(data)
+    _record_event(request, user_id, "reminders_saved", detail="enabled" if payload.enabled else "disabled")
+    return result
+
+
+@router.get("/admin/session")
+def admin_session(request: Request):
+    owner_id = _admin_uid(request)
+    return {"is_owner": True, "owner_telegram_id": owner_id}
+
+
+@router.get("/admin/overview")
+def admin_overview(request: Request):
+    _admin_uid(request)
+    result = request.app.state.db.admin_overview()
+    settings = request.app.state.settings
+    bot_task = getattr(request.app.state, "bot_task", None)
+    result["runtime"] = {
+        "version": getattr(request.app.state, "version", "unknown"),
+        "bot_polling": "active" if bot_task and not bot_task.done() else "stopped" if bot_task else "disabled",
+        "ai_configured": bool(settings.openai_api_key),
+        "public_access": settings.public_access,
+        "port": settings.port,
+    }
+    return result
+
+
+@router.get("/admin/users")
+def admin_users(
+    request: Request,
+    search: str = "",
+    limit: int = 50,
+    offset: int = 0,
+):
+    _admin_uid(request)
+    return request.app.state.db.admin_users(search=search, limit=limit, offset=offset)

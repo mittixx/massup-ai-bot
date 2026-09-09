@@ -24,7 +24,7 @@ async function api(path, options={}) {
   }
   return response.json();
 }
-function switchView(id){ document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id===id)); document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id)); window.scrollTo({top:0,behavior:"smooth"}); if(id==="todayView")loadDashboard(); if(id==="profileView")loadProgress(); if(id==="coachView")Promise.all([loadInsights(),loadReminders()]); }
+function switchView(id){ document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id===id)); document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id)); window.scrollTo({top:0,behavior:"smooth"}); if(id==="todayView")loadDashboard(); if(id==="profileView")loadProgress(); if(id==="coachView")Promise.all([loadInsights(),loadReminders()]); if(id==="adminView")loadAdmin(); }
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
 $("profileShortcut").onclick=()=>switchView("profileView");
 document.querySelectorAll("[data-close-dialog]").forEach(button => {
@@ -100,5 +100,41 @@ $("weightSave").onclick=async()=>{
 };
 async function loadProgress(){try{const d=await api("/api/progress"),history=$("weightHistory"),current=$("weightCurrent");if(!d.weights.length){current.textContent="История веса пока пуста";history.innerHTML="";return;}const values=d.weights.map(x=>x.weight_kg),min=Math.min(...values)-1,max=Math.max(...values)+1,last=d.weights[d.weights.length-1],dateText=new Date(`${last.measured_on}T00:00:00`).toLocaleDateString("ru-RU",{day:"numeric",month:"long"});current.innerHTML=`Текущий вес <strong>${last.weight_kg} кг</strong><span>${dateText}</span>`;history.innerHTML=d.weights.map(x=>{const shortDate=new Date(`${x.measured_on}T00:00:00`).toLocaleDateString("ru-RU",{day:"2-digit",month:"2-digit"}),height=30+(x.weight_kg-min)/(max-min)*45;return `<div class="weight-point" title="${x.measured_on}: ${x.weight_kg} кг" style="height:${height}px"><strong>${x.weight_kg} кг</strong><span>${shortDate}</span></div>`;}).join("");}catch(e){toast(e.message)}}
 
+const adminEventNames={bot_start:"Запуск бота",profile_saved:"Профиль сохранён",meal_manual:"Еда добавлена вручную",meal_corrected:"Запись еды исправлена",meal_deleted:"Запись еды удалена",weight_saved:"Вес записан",reminders_saved:"Напоминания изменены",ai_photo:"AI распознал блюдо",ai_plan:"AI составил рацион",ai_advice:"AI подготовил совет",ai_label:"AI прочитал этикетку"};
+function adminDate(value){if(!value)return "—";const date=new Date(value);return Number.isNaN(date.getTime())?"—":date.toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});}
+function formatBytes(value){if(value<1024)return `${value} Б`;if(value<1024*1024)return `${Math.round(value/1024)} КБ`;return `${(value/1024/1024).toFixed(1)} МБ`;}
+function renderAdminOverview(data){
+  const m=data.metrics,r=data.runtime;
+  const metrics=[
+    ["Всего пользователей",m.total_users],["Активны сегодня",m.active_today],
+    ["Активны за 7 дней",m.active_7d],["Блюд сегодня",m.meals_today],
+    ["AI-запросов за 7 дней",m.ai_requests_7d],["Ошибок AI за 7 дней",m.ai_errors_7d],
+    ["Всего блюд",m.meals_total],["Планов питания",m.plans_total],
+    ["Записей веса",m.weights_total],["Включили напоминания",m.reminders_enabled],
+  ];
+  $("adminMetrics").innerHTML=metrics.map(([label,value])=>`<article class="admin-metric"><span>${escapeHtml(label)}</span><strong>${value}</strong></article>`).join("");
+  const healthy=r.bot_polling==='active'&&r.ai_configured;
+  $("adminStatusTitle").textContent=healthy?"Все сервисы работают":"Нужна проверка настроек";
+  $("adminStatusText").textContent=`Версия ${r.version} · порт ${r.port} · база ${formatBytes(data.database_size_bytes)}`;
+  $("adminStatusDot").style.background=healthy?'#b9f24a':'#ff956b';
+  const runtime=[["Telegram-бот",r.bot_polling],["OpenAI",r.ai_configured?'подключён':'не подключён'],["Публичный доступ",r.public_access?'включён':'выключен'],["Версия",r.version]];
+  $("adminRuntime").innerHTML=runtime.map(([label,value])=>`<div class="runtime-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+  const maxValue=Math.max(1,...data.trend.flatMap(item=>[item.active_users,item.ai_requests]));
+  $("adminTrend").innerHTML=data.trend.map(item=>{const day=new Date(`${item.day}T00:00:00`).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'}),active=3+item.active_users/maxValue*98,ai=3+item.ai_requests/maxValue*98;return `<div class="trend-day" title="${day}: активных ${item.active_users}, AI ${item.ai_requests}"><div class="trend-bars"><i class="trend-active" style="height:${active}px"></i><i class="trend-ai" style="height:${ai}px"></i></div><small>${day.slice(0,2)}</small></div>`;}).join("");
+  $("adminEvents").innerHTML=data.recent_events.length?data.recent_events.map(item=>`<div class="admin-event ${item.status==='error'?'error':''}"><i class="event-mark"></i><div><strong>${escapeHtml(adminEventNames[item.event_type]||item.event_type)}</strong><p>ID ${item.telegram_user_id??'—'}${item.detail?` · ${escapeHtml(item.detail)}`:''}</p></div><time>${adminDate(item.created_at)}</time></div>`).join(""):'<p class="admin-empty">Событий пока нет. Они появятся после действий пользователей.</p>';
+}
+function renderAdminUsers(data){
+  $("adminUsersCount").textContent=`Найдено: ${data.total}`;
+  $("adminUsers").innerHTML=data.items.length?data.items.map(item=>`<article class="admin-user"><div class="admin-user-head"><div><h4>${escapeHtml(item.name)}</h4><code>Telegram ID ${item.telegram_user_id}</code></div><span class="admin-user-time">${adminDate(item.last_activity)}</span></div><div class="admin-user-stats"><span>${item.meals_count} блюд</span><span>${item.ai_requests} AI</span><span>${item.plans_count} планов</span>${item.weight_kg!=null?`<span>${item.weight_kg} → ${item.target_weight_kg} кг</span>`:''}${item.reminders_enabled?'<span>Напоминания ✓</span>':''}</div></article>`).join(""):'<p class="admin-empty">Пользователи не найдены.</p>';
+}
+async function loadAdmin(){
+  try{const search=$("adminSearch").value.trim(),[overview,users]=await Promise.all([api("/api/admin/overview"),api(`/api/admin/users?search=${encodeURIComponent(search)}`)]);renderAdminOverview(overview);renderAdminUsers(users);}catch(e){toast(e.message)}
+}
+async function discoverAdmin(){
+  try{await api("/api/admin/session");$("adminNav").classList.remove("hidden");$("mainNav").classList.add("admin-nav-enabled");if(location.hash==="#admin")switchView("adminView");}catch{}
+}
+$("adminRefresh").onclick=loadAdmin;
+$("adminSearchForm").addEventListener("submit",event=>{event.preventDefault();loadAdmin();});
+
 $("todayDate").textContent=new Intl.DateTimeFormat("ru-RU",{weekday:"long",day:"numeric",month:"long"}).format(new Date());
-loadProfile();loadDashboard();
+discoverAdmin();loadProfile();loadDashboard();

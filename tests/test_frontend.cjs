@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../web/app.js'), 'utf8');
 const start = source.indexOf('$("weightSave").onclick=');
-const end = source.indexOf('$("todayDate")', start);
+const end = source.indexOf('const adminEventNames', start);
 assert.ok(start >= 0 && end > start);
 
 function setup(weights = []) {
@@ -89,4 +89,17 @@ test('AI coach exposes all requested tools and reminders', () => {
   assert.match(source, /\/api\/advice/);
   assert.match(source, /\/api\/label/);
   assert.match(source, /\/api\/reminders/);
+});
+
+test('owner admin panel is hidden by default and loads protected APIs', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
+  for (const id of ['adminView', 'adminNav', 'adminMetrics', 'adminUsers', 'adminEvents', 'adminTrend']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(html, /id="adminNav"[^>]*class="hidden"|class="hidden"[^>]*id="adminNav"/);
+  assert.match(source, /\/api\/admin\/session/);
+  assert.match(source, /\/api\/admin\/overview/);
+  assert.match(source, /\/api\/admin\/users/);
+  const css = fs.readFileSync(path.join(__dirname, '../web/admin.css'), 'utf8');
+  assert.match(css, /nav\.admin-nav-enabled/);
 });

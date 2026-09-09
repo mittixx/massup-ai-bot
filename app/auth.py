@@ -50,3 +50,11 @@ def current_user_id(request: Request, settings: Settings) -> int:
     ):
         raise HTTPException(status_code=403, detail="Это персональный бот")
     return user_id
+
+
+def current_owner_id(request: Request, settings: Settings) -> int:
+    """Return the signed-in owner or reject access to administrative data."""
+    user_id = current_user_id(request, settings)
+    if not settings.owner_telegram_id or user_id != settings.owner_telegram_id:
+        raise HTTPException(status_code=403, detail="Доступно только владельцу бота")
+    return user_id

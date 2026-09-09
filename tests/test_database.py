@@ -60,3 +60,27 @@ def test_restore_validates_and_replaces_database(tmp_path):
     else:
         raise AssertionError("invalid database must be rejected")
     assert live.get_profile(2)["name"] == "Restored"
+
+
+def test_admin_events_and_user_aggregates(tmp_path):
+    db = Database(str(tmp_path / "admin.db"))
+    db.initialize()
+    db.upsert_profile(profile(10, "Kirill"))
+    db.record_event(10, "ai_photo")
+    db.record_event(10, "ai_plan", "error", "TimeoutError")
+    db.record_event(20, "bot_start")
+
+    overview = db.admin_overview()
+    assert overview["metrics"]["total_users"] == 2
+    assert overview["metrics"]["profiles"] == 1
+    assert overview["metrics"]["ai_requests_7d"] == 2
+    assert overview["metrics"]["ai_errors_7d"] == 1
+    assert len(overview["trend"]) == 14
+    assert overview["recent_events"][0]["detail"] == "TimeoutError" or overview["recent_events"][1]["detail"] == "TimeoutError"
+
+    users = db.admin_users()
+    assert users["total"] == 2
+    by_id = {item["telegram_user_id"]: item for item in users["items"]}
+    assert by_id[10]["ai_requests"] == 2
+    assert by_id[20]["name"] == "Без профиля"
+    assert db.admin_users(search="Kir")["total"] == 1

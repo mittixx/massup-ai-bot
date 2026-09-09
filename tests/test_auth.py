@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 import pytest
 from fastapi import HTTPException
 
-from app.auth import current_user_id, validate_telegram_init_data
+from app.auth import current_owner_id, current_user_id, validate_telegram_init_data
 from app.config import Settings
 
 
@@ -47,4 +47,20 @@ def test_public_access_accepts_signed_users_and_private_mode_rejects_them():
     )
     with pytest.raises(HTTPException) as error:
         current_user_id(request, private)
+    assert error.value.status_code == 403
+
+
+def test_owner_access_is_checked_separately_in_public_mode():
+    owner_request = type("Request", (), {
+        "headers": {"X-Telegram-Init-Data": signed_init_data("123:ABC", 42)}
+    })()
+    user_request = type("Request", (), {
+        "headers": {"X-Telegram-Init-Data": signed_init_data("123:ABC", 43)}
+    })()
+    settings = Settings(
+        bot_token="123:ABC", owner_telegram_id=42, public_access=True
+    )
+    assert current_owner_id(owner_request, settings) == 42
+    with pytest.raises(HTTPException) as error:
+        current_owner_id(user_request, settings)
     assert error.value.status_code == 403

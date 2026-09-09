@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from app.bot import (
+    admin_command,
     backup_database,
     configure_bot,
     create_dispatcher,
@@ -46,6 +47,24 @@ def test_public_access_allows_users_but_not_owner_backup(tmp_path):
     asyncio.run(backup_database(user))
     user.answer_document.assert_not_awaited()
     user.answer.assert_awaited_once_with("Это персональный бот. Доступ закрыт.")
+
+
+def test_admin_button_is_owner_only(tmp_path):
+    settings = Settings(
+        bot_token="123:fake", owner_telegram_id=42, public_access=True,
+        webapp_url="https://example.com", run_bot=False,
+    )
+    db = Database(str(tmp_path / "admin-bot.db"))
+    db.initialize()
+    configure_bot(db, NutritionAI(settings), settings)
+    owner = SimpleNamespace(from_user=SimpleNamespace(id=42), answer=AsyncMock())
+    asyncio.run(admin_command(owner))
+    keyboard = owner.answer.call_args.kwargs["reply_markup"]
+    assert keyboard.inline_keyboard[0][0].web_app.url == "https://example.com/#admin"
+
+    outsider = SimpleNamespace(from_user=SimpleNamespace(id=43), answer=AsyncMock())
+    asyncio.run(admin_command(outsider))
+    outsider.answer.assert_awaited_once_with("Доступно только владельцу бота.")
 
 
 def test_dispatcher_can_be_created_again(tmp_path):

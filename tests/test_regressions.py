@@ -70,7 +70,7 @@ def test_release_cache_and_russian_encoding(tmp_path):
         assert page.headers["cache-control"] == "no-store"
         assert "Мой профиль" in page.text
         assert "Рџ" not in page.text
-        for asset in ("style.css", "weight.css", "coach.css", "app.js"):
+        for asset in ("style.css", "weight.css", "coach.css", "admin.css", "app.js"):
             path = f"/static/{asset}?v={VERSION}"
             assert path in page.text
             response = client.get(path)

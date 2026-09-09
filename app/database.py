@@ -4,7 +4,7 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -115,9 +115,21 @@ class Database:
                     PRIMARY KEY (telegram_user_id, reminder_kind, sent_on),
                     FOREIGN KEY (telegram_user_id) REFERENCES profiles(telegram_user_id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS admin_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_user_id INTEGER,
+                    event_type TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'ok',
+                    detail TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                );
                 CREATE INDEX IF NOT EXISTS idx_meals_user_date ON meals(telegram_user_id, eaten_on);
                 CREATE INDEX IF NOT EXISTS idx_weights_user_date ON weights(telegram_user_id, measured_on);
                 CREATE INDEX IF NOT EXISTS idx_reminder_enabled ON reminder_settings(enabled);
+                CREATE INDEX IF NOT EXISTS idx_admin_events_created ON admin_events(created_at);
+                CREATE INDEX IF NOT EXISTS idx_admin_events_user ON admin_events(telegram_user_id);
+                CREATE INDEX IF NOT EXISTS idx_admin_events_type_status ON admin_events(event_type, status);
                 """
             )
 
@@ -413,3 +425,198 @@ class Database:
                 (user_id, kind, sent_on, self._now()),
             )
         return cursor.rowcount > 0
+
+    def record_event(
+        self,
+        user_id: int | None,
+        event_type: str,
+        status: str = "ok",
+        detail: str = "",
+    ) -> None:
+        """Store a short, secret-free operational event for the owner dashboard."""
+        safe_type = event_type.strip()[:60] or "unknown"
+        safe_status = status if status in {"ok", "error"} else "error"
+        safe_detail = detail.strip()[:160]
+        now = self._now()
+        cutoff = (datetime.now(UTC) - timedelta(days=180)).isoformat()
+        with self._lock, self.connect() as db:
+            db.execute(
+                """
+                INSERT INTO admin_events(
+                    telegram_user_id, event_type, status, detail, created_at
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (user_id, safe_type, safe_status, safe_detail, now),
+            )
+            db.execute("DELETE FROM admin_events WHERE created_at < ?", (cutoff,))
+
+    def admin_overview(self) -> dict[str, Any]:
+        """Aggregate owner-facing metrics without returning private profile fields."""
+        now = datetime.now(UTC)
+        today = now.date()
+        today_text = str(today)
+        week_cutoff = (now - timedelta(days=7)).isoformat()
+        today_cutoff = datetime.combine(today, datetime.min.time(), tzinfo=UTC).isoformat()
+        with self.connect() as db:
+            def scalar(sql: str, params: tuple[Any, ...] = ()) -> int:
+                row = db.execute(sql, params).fetchone()
+                return int(row[0] or 0) if row else 0
+
+            total_users = scalar(
+                """
+                SELECT COUNT(*) FROM (
+                    SELECT telegram_user_id FROM profiles
+                    UNION
+                    SELECT telegram_user_id FROM admin_events
+                    WHERE telegram_user_id IS NOT NULL
+                )
+                """
+            )
+            activity_sql = """
+                SELECT COUNT(*) FROM (
+                    SELECT telegram_user_id FROM admin_events WHERE created_at >= ?
+                    UNION SELECT telegram_user_id FROM meals WHERE created_at >= ?
+                    UNION SELECT telegram_user_id FROM weights WHERE created_at >= ?
+                    UNION SELECT telegram_user_id FROM plans WHERE created_at >= ?
+                    UNION SELECT telegram_user_id FROM profiles WHERE updated_at >= ?
+                )
+            """
+            active_today = scalar(activity_sql, (today_cutoff,) * 5)
+            active_7d = scalar(activity_sql, (week_cutoff,) * 5)
+            metrics = {
+                "total_users": total_users,
+                "profiles": scalar("SELECT COUNT(*) FROM profiles"),
+                "active_today": active_today,
+                "active_7d": active_7d,
+                "meals_today": scalar(
+                    "SELECT COUNT(*) FROM meals WHERE eaten_on=?", (today_text,)
+                ),
+                "meals_total": scalar("SELECT COUNT(*) FROM meals"),
+                "plans_total": scalar("SELECT COUNT(*) FROM plans"),
+                "weights_total": scalar("SELECT COUNT(*) FROM weights"),
+                "reminders_enabled": scalar(
+                    "SELECT COUNT(*) FROM reminder_settings WHERE enabled=1"
+                ),
+                "ai_requests_7d": scalar(
+                    "SELECT COUNT(*) FROM admin_events WHERE event_type LIKE 'ai_%' AND created_at>=?",
+                    (week_cutoff,),
+                ),
+                "ai_errors_7d": scalar(
+                    """SELECT COUNT(*) FROM admin_events
+                       WHERE event_type LIKE 'ai_%' AND status='error' AND created_at>=?""",
+                    (week_cutoff,),
+                ),
+            }
+
+            activity_rows = db.execute(
+                """
+                WITH activity AS (
+                    SELECT telegram_user_id, substr(created_at, 1, 10) AS day FROM admin_events
+                    UNION ALL SELECT telegram_user_id, substr(created_at, 1, 10) FROM meals
+                    UNION ALL SELECT telegram_user_id, substr(created_at, 1, 10) FROM weights
+                    UNION ALL SELECT telegram_user_id, substr(created_at, 1, 10) FROM plans
+                    UNION ALL SELECT telegram_user_id, substr(updated_at, 1, 10) FROM profiles
+                )
+                SELECT day, COUNT(DISTINCT telegram_user_id) AS users
+                FROM activity WHERE day >= ? GROUP BY day
+                """,
+                (str(today - timedelta(days=13)),),
+            ).fetchall()
+            ai_rows = db.execute(
+                """
+                SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS requests
+                FROM admin_events
+                WHERE event_type LIKE 'ai_%' AND created_at >= ?
+                GROUP BY day
+                """,
+                ((now - timedelta(days=14)).isoformat(),),
+            ).fetchall()
+            activity_by_day = {row["day"]: int(row["users"]) for row in activity_rows}
+            ai_by_day = {row["day"]: int(row["requests"]) for row in ai_rows}
+            trend = []
+            for offset in range(13, -1, -1):
+                day = str(today - timedelta(days=offset))
+                trend.append({
+                    "day": day,
+                    "active_users": activity_by_day.get(day, 0),
+                    "ai_requests": ai_by_day.get(day, 0),
+                })
+
+            recent_rows = db.execute(
+                """
+                SELECT event_type, status, detail, telegram_user_id, created_at
+                FROM admin_events ORDER BY id DESC LIMIT 30
+                """
+            ).fetchall()
+
+        database_size = Path(self.path).stat().st_size if Path(self.path).exists() else 0
+        return {
+            "metrics": metrics,
+            "trend": trend,
+            "recent_events": [dict(row) for row in recent_rows],
+            "database_size_bytes": database_size,
+            "generated_at": now.isoformat(),
+        }
+
+    def admin_users(self, search: str = "", limit: int = 50, offset: int = 0) -> dict[str, Any]:
+        """Return a compact user activity list for the owner dashboard."""
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        search_value = f"%{search.strip()}%"
+        cte = """
+            WITH ids AS (
+                SELECT telegram_user_id FROM profiles
+                UNION
+                SELECT telegram_user_id FROM admin_events WHERE telegram_user_id IS NOT NULL
+            ), activity AS (
+                SELECT telegram_user_id, created_at FROM admin_events
+                UNION ALL SELECT telegram_user_id, created_at FROM meals
+                UNION ALL SELECT telegram_user_id, created_at FROM weights
+                UNION ALL SELECT telegram_user_id, created_at FROM plans
+                UNION ALL SELECT telegram_user_id, updated_at FROM profiles
+            ), last_seen AS (
+                SELECT telegram_user_id, MAX(created_at) AS last_activity
+                FROM activity GROUP BY telegram_user_id
+            )
+        """
+        where = """
+            WHERE (? = '%%' OR COALESCE(p.name, '') LIKE ?
+                   OR CAST(ids.telegram_user_id AS TEXT) LIKE ?)
+        """
+        with self.connect() as db:
+            count_row = db.execute(
+                cte + """
+                SELECT COUNT(*) FROM ids
+                LEFT JOIN profiles p ON p.telegram_user_id=ids.telegram_user_id
+                """ + where,
+                (search_value, search_value, search_value),
+            ).fetchone()
+            rows = db.execute(
+                cte + """
+                SELECT
+                    ids.telegram_user_id,
+                    COALESCE(p.name, 'Без профиля') AS name,
+                    COALESCE(p.city, '') AS city,
+                    p.weight_kg,
+                    p.target_weight_kg,
+                    p.created_at AS joined_at,
+                    last_seen.last_activity,
+                    (SELECT COUNT(*) FROM meals m WHERE m.telegram_user_id=ids.telegram_user_id) AS meals_count,
+                    (SELECT COUNT(*) FROM plans pl WHERE pl.telegram_user_id=ids.telegram_user_id) AS plans_count,
+                    (SELECT COUNT(*) FROM admin_events e WHERE e.telegram_user_id=ids.telegram_user_id
+                        AND e.event_type LIKE 'ai_%') AS ai_requests,
+                    EXISTS(SELECT 1 FROM reminder_settings r
+                        WHERE r.telegram_user_id=ids.telegram_user_id AND r.enabled=1) AS reminders_enabled
+                FROM ids
+                LEFT JOIN profiles p ON p.telegram_user_id=ids.telegram_user_id
+                LEFT JOIN last_seen ON last_seen.telegram_user_id=ids.telegram_user_id
+                """ + where + """
+                ORDER BY last_seen.last_activity DESC, ids.telegram_user_id DESC
+                LIMIT ? OFFSET ?
+                """,
+                (search_value, search_value, search_value, limit, offset),
+            ).fetchall()
+        items = [dict(row) for row in rows]
+        for item in items:
+            item["reminders_enabled"] = bool(item["reminders_enabled"])
+        return {"items": items, "total": int(count_row[0] if count_row else 0)}

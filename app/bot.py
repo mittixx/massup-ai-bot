@@ -56,9 +56,33 @@ def app_keyboard() -> InlineKeyboardMarkup | None:
     ]])
 
 
+def admin_keyboard() -> InlineKeyboardMarkup | None:
+    if not _settings or not _settings.webapp_url:
+        return None
+    url = f"{_settings.webapp_url.rstrip('/')}/#admin"
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="Открыть админ-панель", web_app=WebAppInfo(url=url))
+    ]])
+
+
+def _record_bot_event(
+    user_id: int | None,
+    event_type: str,
+    status: str = "ok",
+    detail: str = "",
+) -> None:
+    if _db is None:
+        return
+    try:
+        _db.record_event(user_id, event_type, status, detail)
+    except Exception as exc:
+        logger.warning("BOT_EVENT_WRITE_FAILED type=%s", type(exc).__name__)
+
+
 async def start(message: Message):
     if await reject_if_needed(message):
         return
+    _record_bot_event(message.from_user.id if message.from_user else None, "bot_start")
     await message.answer(
         "Привет! Я твой AI-помощник для набора веса.\n\n"
         "Отправь фотографию еды — я оценю порцию и КБЖУ.\n"
@@ -73,6 +97,18 @@ async def open_app(message: Message):
     if await reject_if_needed(message):
         return
     await message.answer("В Mini App находятся дневник, меню, покупки и прогресс.", reply_markup=app_keyboard())
+
+
+async def admin_command(message: Message):
+    if not message.from_user or _settings is None:
+        return
+    if not _settings.owner_telegram_id or message.from_user.id != _settings.owner_telegram_id:
+        await message.answer("Доступно только владельцу бота.")
+        return
+    await message.answer(
+        "Статистика пользователей, активности и AI-запросов доступна в защищённой панели.",
+        reply_markup=admin_keyboard(),
+    )
 
 
 async def today(message: Message):
@@ -214,11 +250,14 @@ async def advice_for_message(message: Message, mode: str, query: str = ""):
             query,
         )
     except AIUnavailableError as exc:
+        _record_bot_event(message.from_user.id, "ai_advice", "error", "AIUnavailableError")
         await status.edit_text(str(exc))
         return
-    except Exception:
+    except Exception as exc:
+        _record_bot_event(message.from_user.id, "ai_advice", "error", type(exc).__name__)
         await status.edit_text("Не удалось подготовить рекомендацию. Повтори позже.")
         return
+    _record_bot_event(message.from_user.id, "ai_advice", detail=mode)
     await status.edit_text(_format_advice(result), reply_markup=app_keyboard())
 
 
@@ -314,11 +353,14 @@ async def label_photo(message: Message, bot: Bot):
         stream = await bot.download_file(file.file_path)
         result = await _ai.analyze_label(stream.read(), "image/jpeg")
     except AIUnavailableError as exc:
+        _record_bot_event(message.from_user.id, "ai_label", "error", "AIUnavailableError")
         await status.edit_text(str(exc))
         return
-    except Exception:
+    except Exception as exc:
+        _record_bot_event(message.from_user.id, "ai_label", "error", type(exc).__name__)
         await status.edit_text("Не удалось прочитать этикетку. Сделай фото ближе и без бликов.")
         return
+    _record_bot_event(message.from_user.id, "ai_label")
     macros = (
         f"На 100 г: {result.kcal_per_100g if result.kcal_per_100g is not None else '—'} ккал · "
         f"Б {result.protein_per_100g if result.protein_per_100g is not None else '—'} · "
@@ -355,12 +397,15 @@ async def generate_plan_for_message(message: Message, budget: int):
             profile, calculate_targets(profile).model_dump(), budget, "", "простые блюда"
         )
     except AIUnavailableError as exc:
+        _record_bot_event(message.from_user.id, "ai_plan", "error", "AIUnavailableError")
         await wait.edit_text(str(exc))
         return
-    except Exception:
+    except Exception as exc:
+        _record_bot_event(message.from_user.id, "ai_plan", "error", type(exc).__name__)
         await wait.edit_text("Не удалось составить меню. Повтори попытку позже.")
         return
     _db.save_plan(message.from_user.id, budget, plan.model_dump())
+    _record_bot_event(message.from_user.id, "ai_plan")
     first = plan.days[0]
     dishes = "\n".join(f"• {meal.meal_type}: {meal.dish}" for meal in first.meals)
     await wait.edit_text(
@@ -393,9 +438,11 @@ async def photo(message: Message, bot: Bot):
         stream = await bot.download_file(file.file_path)
         analysis = await _ai.analyze_photo(stream.read(), "image/jpeg")
     except AIUnavailableError as exc:
+        _record_bot_event(message.from_user.id, "ai_photo", "error", "AIUnavailableError")
         await status.edit_text(str(exc))
         return
-    except Exception:
+    except Exception as exc:
+        _record_bot_event(message.from_user.id, "ai_photo", "error", type(exc).__name__)
         await status.edit_text("Не удалось распознать фото. Повтори попытку позже.")
         return
     meal = _db.add_meal({
@@ -406,6 +453,7 @@ async def photo(message: Message, bot: Bot):
         "carbs": analysis.total_carbs, "source": "photo",
         "confidence": analysis.confidence, "details": analysis.model_dump(),
     })
+    _record_bot_event(message.from_user.id, "ai_photo")
     assumptions = "\n".join(f"• {x}" for x in analysis.assumptions[:3])
     await status.edit_text(
         f"{analysis.dish_name}\n"
@@ -496,6 +544,7 @@ def create_dispatcher(db: Database, ai: NutritionAI, settings: Settings) -> tupl
     router = Router()
     router.message.register(start, CommandStart())
     router.message.register(open_app, Command("app"))
+    router.message.register(admin_command, Command("admin"))
     router.message.register(today, Command("today"))
     router.message.register(suggest_command, Command("suggest"))
     router.message.register(recipe_command, Command("recipe"))

@@ -45,6 +45,7 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.settings = settings
+        app.state.version = VERSION
         app.state.db = Database(settings.database_path)
         app.state.db.initialize()
         app.state.ai = NutritionAI(settings)
@@ -91,6 +92,7 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.version = VERSION
     app.state.db = Database(settings.database_path)
     app.state.ai = NutritionAI(settings)
     app.include_router(api_router)
