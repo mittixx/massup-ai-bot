@@ -1,4 +1,5 @@
 from app.database import Database
+import sqlite3
 
 
 def test_profile_meal_and_weight_roundtrip(tmp_path):
@@ -21,4 +22,8 @@ def test_profile_meal_and_weight_roundtrip(tmp_path):
     assert len(db.meals_for_day(10, "2026-09-07")) == 1
     db.save_weight(10, "2026-09-07", 70.5)
     assert db.weights(10)[0]["weight_kg"] == 70.5
-
+    backup_path = tmp_path / "backup.db"
+    db.backup_to(str(backup_path))
+    with sqlite3.connect(backup_path) as snapshot:
+        assert snapshot.execute("SELECT name FROM profiles WHERE telegram_user_id=10").fetchone()[0] == "Kirill"
+        assert snapshot.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

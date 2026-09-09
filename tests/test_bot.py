@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from app.bot import configure_bot, create_dispatcher, start, text_budget
+from app.bot import backup_database, configure_bot, create_dispatcher, start, text_budget
 from app.config import Settings
 from app.database import Database
 from app.ai_service import NutritionAI
@@ -30,3 +30,15 @@ def test_dispatcher_can_be_created_again(tmp_path):
             assert len(dispatcher.sub_routers) == 1
             await bot.session.close()
     asyncio.run(scenario())
+
+
+def test_backup_is_owner_only(tmp_path):
+    settings = Settings(bot_token="123:fake", owner_telegram_id=42, run_bot=False)
+    db = Database(str(tmp_path / "bot.db"))
+    db.initialize()
+    configure_bot(db, NutritionAI(settings), settings)
+    outsider = SimpleNamespace(from_user=SimpleNamespace(id=43), answer=AsyncMock(),
+                              answer_document=AsyncMock())
+    asyncio.run(backup_database(outsider))
+    outsider.answer_document.assert_not_awaited()
+    outsider.answer.assert_awaited_once_with("Это персональный бот. Доступ закрыт.")

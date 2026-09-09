@@ -210,6 +210,19 @@ class Database:
             ).fetchall()
         return [dict(row) for row in reversed(rows)]
 
+    def backup_to(self, destination: str) -> str:
+        """Create a consistent SQLite snapshot while the bot stays online."""
+        Path(destination).parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            source = sqlite3.connect(self.path, timeout=30)
+            backup = sqlite3.connect(destination, timeout=30)
+            try:
+                source.backup(backup)
+            finally:
+                backup.close()
+                source.close()
+        return destination
+
     def save_plan(self, user_id: int, budget: int, plan: dict[str, Any]) -> None:
         with self._lock, self.connect() as db:
             db.execute(

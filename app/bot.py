@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from tempfile import TemporaryDirectory
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import Command, CommandStart
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
+from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 
 from app.ai_service import AIUnavailableError, NutritionAI
 from app.config import Settings
@@ -83,6 +84,24 @@ async def today(message: Message):
         f"Ж {totals['fat']} / {target.fat} г · У {totals['carbs']} / {target.carbs} г",
         reply_markup=app_keyboard(),
     )
+
+
+async def backup_database(message: Message):
+    if not message.from_user or _settings is None or _db is None:
+        return
+    if not _settings.owner_telegram_id:
+        await message.answer("Резервная копия отключена: сначала укажите OWNER_TELEGRAM_ID на сервере.")
+        return
+    if message.from_user.id != _settings.owner_telegram_id:
+        await message.answer("Это персональный бот. Доступ закрыт.")
+        return
+    with TemporaryDirectory(prefix="massup-backup-") as directory:
+        filename = f"massup-backup-{date.today().isoformat()}.db"
+        path = _db.backup_to(f"{directory}/{filename}")
+        await message.answer_document(
+            FSInputFile(path, filename=filename),
+            caption="Резервная копия MassUp AI. Сохрани этот файл до пересоздания бота.",
+        )
 
 
 async def generate_plan_for_message(message: Message, budget: int):
@@ -186,6 +205,7 @@ def create_dispatcher(db: Database, ai: NutritionAI, settings: Settings) -> tupl
     router.message.register(start, CommandStart())
     router.message.register(open_app, Command("app"))
     router.message.register(today, Command("today"))
+    router.message.register(backup_database, Command("backup"))
     router.message.register(plan_command, Command("plan"))
     router.message.register(photo, F.photo)
     router.message.register(text_budget, F.text)
