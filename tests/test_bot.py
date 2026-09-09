@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from app.bot import backup_database, configure_bot, create_dispatcher, start, text_budget
+from app.bot import backup_database, configure_bot, create_dispatcher, restore_database, start, text_budget
 from app.config import Settings
 from app.database import Database
 from app.ai_service import NutritionAI
@@ -42,3 +42,40 @@ def test_backup_is_owner_only(tmp_path):
     asyncio.run(backup_database(outsider))
     outsider.answer_document.assert_not_awaited()
     outsider.answer.assert_awaited_once_with("Это персональный бот. Доступ закрыт.")
+
+
+def test_restore_is_owner_only_and_restores_backup(tmp_path):
+    settings = Settings(bot_token="123:fake", owner_telegram_id=42, run_bot=False)
+    live = Database(str(tmp_path / "live.db"))
+    live.initialize()
+    source = Database(str(tmp_path / "source.db"))
+    source.initialize()
+    source.upsert_profile({
+        "telegram_user_id": 42, "name": "Restored", "sex": "male", "age": 20,
+        "height_cm": 180, "weight_kg": 70, "target_weight_kg": 78,
+        "activity": "medium", "meals_per_day": 4, "allergies": "",
+        "dislikes": "", "city": "", "stores": "", "weekly_budget": 4500,
+    })
+    configure_bot(live, NutritionAI(settings), settings)
+
+    async def scenario():
+        status = SimpleNamespace(edit_text=AsyncMock())
+        message = SimpleNamespace(
+            from_user=SimpleNamespace(id=42),
+            document=SimpleNamespace(file_name="nutrition.db", file_size=1024, file_id="file-id"),
+            answer=AsyncMock(return_value=status),
+        )
+        bot = SimpleNamespace(
+            get_file=AsyncMock(return_value=SimpleNamespace(file_path="remote.db")),
+            download_file=AsyncMock(side_effect=lambda _, destination: __import__("shutil").copy(source.path, destination)),
+        )
+        await restore_database(message, bot)
+        status.edit_text.assert_awaited_once_with(
+            "База восстановлена. Проверь данные командами /today и /app."
+        )
+        assert live.get_profile(42)["name"] == "Restored"
+
+        outsider = SimpleNamespace(from_user=SimpleNamespace(id=43), answer=AsyncMock())
+        await restore_database(outsider, bot)
+        outsider.answer.assert_awaited_once_with("Это персональный бот. Доступ закрыт.")
+    asyncio.run(scenario())

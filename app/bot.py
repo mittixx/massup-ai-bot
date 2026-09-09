@@ -104,6 +104,52 @@ async def backup_database(message: Message):
         )
 
 
+async def restore_database(message: Message, bot: Bot):
+    if not message.from_user or _settings is None or _db is None:
+        return
+    if not _settings.owner_telegram_id:
+        await message.answer("Восстановление отключено: сначала укажите OWNER_TELEGRAM_ID на сервере.")
+        return
+    if message.from_user.id != _settings.owner_telegram_id:
+        await message.answer("Это персональный бот. Доступ закрыт.")
+        return
+
+    document = message.document
+    filename = (document.file_name or "").lower() if document else ""
+    if not document or not filename.endswith(".db"):
+        await message.answer("Прикрепи файл nutrition.db как документ и добавь подпись /restore.")
+        return
+    if document.file_size and document.file_size > 20 * 1024 * 1024:
+        await message.answer("Файл базы слишком большой. Максимальный размер — 20 МБ.")
+        return
+
+    status = await message.answer("Проверяю резервную копию…")
+    try:
+        with TemporaryDirectory(prefix="massup-restore-") as directory:
+            destination = f"{directory}/nutrition.db"
+            telegram_file = await bot.get_file(document.file_id)
+            await bot.download_file(telegram_file.file_path, destination=destination)
+            _db.restore_from(destination)
+    except (ValueError, OSError):
+        await status.edit_text(
+            "Не удалось восстановить базу: файл повреждён или не является копией MassUp AI."
+        )
+        return
+    except Exception:
+        await status.edit_text("Не удалось восстановить базу. Действующая база не изменена.")
+        return
+
+    await status.edit_text(
+        "База восстановлена. Проверь данные командами /today и /app."
+    )
+
+
+async def restore_help(message: Message):
+    if await reject_if_needed(message):
+        return
+    await message.answer("Прикрепи файл nutrition.db как документ и добавь подпись /restore.")
+
+
 async def generate_plan_for_message(message: Message, budget: int):
     if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
         return
@@ -206,6 +252,8 @@ def create_dispatcher(db: Database, ai: NutritionAI, settings: Settings) -> tupl
     router.message.register(open_app, Command("app"))
     router.message.register(today, Command("today"))
     router.message.register(backup_database, Command("backup"))
+    router.message.register(restore_database, Command("restore"), F.document)
+    router.message.register(restore_help, Command("restore"))
     router.message.register(plan_command, Command("plan"))
     router.message.register(photo, F.photo)
     router.message.register(text_budget, F.text)

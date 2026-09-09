@@ -17,14 +17,17 @@ class Database:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(self.path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        try:
-            yield connection
-            connection.commit()
-        finally:
-            connection.close()
+        # Reads must also wait while an owner-requested restore replaces the
+        # database. RLock keeps existing nested write calls safe.
+        with self._lock:
+            connection = sqlite3.connect(self.path, timeout=30)
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            try:
+                yield connection
+                connection.commit()
+            finally:
+                connection.close()
 
     def initialize(self) -> None:
         with self._lock, self.connect() as db:
@@ -222,6 +225,51 @@ class Database:
                 backup.close()
                 source.close()
         return destination
+
+    @staticmethod
+    def _validate_restore_source(connection: sqlite3.Connection) -> None:
+        integrity = connection.execute("PRAGMA quick_check").fetchone()
+        if not integrity or integrity[0] != "ok":
+            raise ValueError("Повреждённый файл SQLite.")
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        required = {"profiles", "meals", "weights", "plans"}
+        if not required.issubset(tables):
+            raise ValueError("Это не резервная копия MassUp AI.")
+
+    def restore_from(self, source_path: str) -> None:
+        """Validate and restore a MassUp SQLite backup without losing the live DB on failure."""
+        source_file = Path(source_path)
+        if not source_file.is_file() or source_file.stat().st_size == 0:
+            raise ValueError("Файл резервной копии пуст или не найден.")
+
+        with sqlite3.connect(source_file, timeout=30) as source:
+            self._validate_restore_source(source)
+
+        rollback_path = Path(self.path).with_suffix(".before-restore.db")
+        with self._lock:
+            current = sqlite3.connect(self.path, timeout=30)
+            rollback = sqlite3.connect(rollback_path, timeout=30)
+            source = sqlite3.connect(source_file, timeout=30)
+            try:
+                current.backup(rollback)
+                source.backup(current)
+                self._validate_restore_source(current)
+            except Exception:
+                rollback.backup(current)
+                raise
+            finally:
+                source.close()
+                rollback.close()
+                current.close()
+                rollback_path.unlink(missing_ok=True)
+
+        # Add any schema/index additions from the running release.
+        self.initialize()
 
     def save_plan(self, user_id: int, budget: int, plan: dict[str, Any]) -> None:
         with self._lock, self.connect() as db:

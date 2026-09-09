@@ -2,6 +2,15 @@ from app.database import Database
 import sqlite3
 
 
+def profile(user_id, name):
+    return {
+        "telegram_user_id": user_id, "name": name, "sex": "male", "age": 20,
+        "height_cm": 180, "weight_kg": 70, "target_weight_kg": 78,
+        "activity": "medium", "meals_per_day": 4, "allergies": "",
+        "dislikes": "", "city": "Ярославль", "stores": "", "weekly_budget": 4500,
+    }
+
+
 def test_profile_meal_and_weight_roundtrip(tmp_path):
     db = Database(str(tmp_path / "test.db"))
     db.initialize()
@@ -27,3 +36,27 @@ def test_profile_meal_and_weight_roundtrip(tmp_path):
     with sqlite3.connect(backup_path) as snapshot:
         assert snapshot.execute("SELECT name FROM profiles WHERE telegram_user_id=10").fetchone()[0] == "Kirill"
         assert snapshot.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_restore_validates_and_replaces_database(tmp_path):
+    live = Database(str(tmp_path / "live.db"))
+    live.initialize()
+    live.upsert_profile(profile(1, "Old"))
+    source = Database(str(tmp_path / "source.db"))
+    source.initialize()
+    source.upsert_profile(profile(2, "Restored"))
+
+    live.restore_from(source.path)
+    assert live.get_profile(1) is None
+    assert live.get_profile(2)["name"] == "Restored"
+
+    invalid = tmp_path / "invalid.db"
+    with sqlite3.connect(invalid) as connection:
+        connection.execute("CREATE TABLE unrelated(value TEXT)")
+    try:
+        live.restore_from(str(invalid))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid database must be rejected")
+    assert live.get_profile(2)["name"] == "Restored"
