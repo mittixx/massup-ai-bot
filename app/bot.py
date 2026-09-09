@@ -29,7 +29,11 @@ def allowed(message: Message) -> bool:
     return bool(
         message.from_user
         and (_settings is not None)
-        and (not _settings.owner_telegram_id or message.from_user.id == _settings.owner_telegram_id)
+        and (
+            _settings.public_access
+            or not _settings.owner_telegram_id
+            or message.from_user.id == _settings.owner_telegram_id
+        )
     )
 
 

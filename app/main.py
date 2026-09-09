@@ -112,6 +112,7 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
             "bot_polling": "active" if task and not task.done() else "stopped" if task else "disabled",
             "bot_configured": bool(settings.bot_token),
             "ai_configured": bool(settings.openai_api_key),
+            "public_access": settings.public_access,
         })
 
     @app.get("/", include_in_schema=False)

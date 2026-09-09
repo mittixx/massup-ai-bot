@@ -17,6 +17,7 @@ def _as_bool(value: str | None, default: bool = False) -> bool:
 class Settings:
     bot_token: str = ""
     owner_telegram_id: int = 0
+    public_access: bool = False
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-luna"
     webapp_url: str = "http://localhost:8000"
@@ -32,6 +33,7 @@ class Settings:
         return cls(
             bot_token=os.getenv("BOT_TOKEN", "").strip(),
             owner_telegram_id=int(os.getenv("OWNER_TELEGRAM_ID", "0") or 0),
+            public_access=_as_bool(os.getenv("PUBLIC_ACCESS"), False),
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             openai_model=os.getenv("OPENAI_MODEL", "gpt-5.6-luna").strip(),
             webapp_url=os.getenv("WEBAPP_URL", "http://localhost:8000").strip(),
@@ -46,4 +48,3 @@ class Settings:
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings.from_env()
-

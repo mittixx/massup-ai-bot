@@ -46,7 +46,8 @@ python run.py
 ## Переменные `.env`
 
 - `BOT_TOKEN` — токен, полученный у BotFather.
-- `OWNER_TELEGRAM_ID` — ваш цифровой Telegram ID. При значении `0` вход не ограничен.
+- `OWNER_TELEGRAM_ID` — ваш цифровой Telegram ID для защищённых команд `/backup` и `/restore`.
+- `PUBLIC_ACCESS` — `true`, чтобы открыть обычные функции бота и Mini App всем пользователям, сохранив административные команды только для владельца.
 - `OPENAI_API_KEY` — ключ OpenAI API; подписка ChatGPT и API оплачиваются отдельно.
 - `OPENAI_MODEL` — модель с поддержкой изображений и Structured Outputs. По умолчанию стоит экономичная `gpt-5.6-luna`.
 - `WEBAPP_URL` — публичный HTTPS-адрес приложения. Telegram Mini App не открывает обычный локальный адрес на чужом устройстве.

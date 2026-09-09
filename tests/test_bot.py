@@ -21,6 +21,25 @@ def test_start_button_and_owner_access(tmp_path):
     outsider.answer.assert_awaited_once_with("Это персональный бот. Доступ закрыт.")
 
 
+def test_public_access_allows_users_but_not_owner_backup(tmp_path):
+    settings = Settings(
+        bot_token="123:fake", owner_telegram_id=42, public_access=True,
+        webapp_url="https://example.com", run_bot=False,
+    )
+    db = Database(str(tmp_path / "public.db"))
+    db.initialize()
+    configure_bot(db, NutritionAI(settings), settings)
+    user = SimpleNamespace(from_user=SimpleNamespace(id=43), answer=AsyncMock())
+    asyncio.run(start(user))
+    assert "Привет" in user.answer.call_args.args[0]
+
+    user.answer.reset_mock()
+    user.answer_document = AsyncMock()
+    asyncio.run(backup_database(user))
+    user.answer_document.assert_not_awaited()
+    user.answer.assert_awaited_once_with("Это персональный бот. Доступ закрыт.")
+
+
 def test_dispatcher_can_be_created_again(tmp_path):
     settings = Settings(bot_token="123:fake", run_bot=False)
     db = Database(str(tmp_path / "bot.db"))

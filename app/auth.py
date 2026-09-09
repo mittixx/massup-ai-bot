@@ -43,7 +43,10 @@ def current_user_id(request: Request, settings: Settings) -> int:
     else:
         raise HTTPException(status_code=401, detail="Откройте приложение внутри Telegram")
 
-    if settings.owner_telegram_id and user_id != settings.owner_telegram_id:
+    if (
+        not settings.public_access
+        and settings.owner_telegram_id
+        and user_id != settings.owner_telegram_id
+    ):
         raise HTTPException(status_code=403, detail="Это персональный бот")
     return user_id
-
