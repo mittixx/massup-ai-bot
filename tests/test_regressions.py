@@ -70,7 +70,7 @@ def test_release_cache_and_russian_encoding(tmp_path):
         assert page.headers["cache-control"] == "no-store"
         assert "Мой профиль" in page.text
         assert "Рџ" not in page.text
-        for asset in ("style.css", "weight.css", "app.js"):
+        for asset in ("style.css", "weight.css", "coach.css", "app.js"):
             path = f"/static/{asset}?v={VERSION}"
             assert path in page.text
             response = client.get(path)
@@ -78,7 +78,7 @@ def test_release_cache_and_russian_encoding(tmp_path):
             assert response.headers["cache-control"] == "no-cache"
 
 
-@pytest.mark.parametrize("endpoint", ["plan", "photo"])
+@pytest.mark.parametrize("endpoint", ["plan", "photo", "advice", "label"])
 @pytest.mark.parametrize("kind", ["authentication", "unexpected"])
 def test_ai_errors_do_not_leak_in_response_or_logs(tmp_path, monkeypatch, caplog, endpoint, kind):
     app = make_app(tmp_path)
@@ -94,9 +94,18 @@ def test_ai_errors_do_not_leak_in_response_or_logs(tmp_path, monkeypatch, caplog
         monkeypatch.setattr(app.state.ai, "_parse", fail)
         if endpoint == "plan":
             response = client.post("/api/plan", json={"telegram_user_id": 1, "budget": 4000})
-        else:
+        elif endpoint == "photo":
             response = client.post("/api/meals/photo", data={"telegram_user_id": "1"},
                                    files={"image": ("test.jpg", b"fake", "image/jpeg")})
+        elif endpoint == "advice":
+            response = client.post(
+                "/api/advice",
+                json={"telegram_user_id": 1, "mode": "top_up", "query": ""},
+            )
+        else:
+            response = client.post(
+                "/api/label", files={"image": ("label.jpg", b"fake", "image/jpeg")}
+            )
         assert response.status_code == (503 if kind == "authentication" else 502)
         assert "sk-test" not in response.text + caplog.text
         assert "Invalid API key" not in response.text + caplog.text

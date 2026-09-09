@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Literal
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 Sex = Literal["male", "female"]
@@ -142,3 +143,55 @@ class WeightInput(BaseModel):
     measured_on: date = Field(default_factory=date.today)
     weight_kg: float = Field(ge=35, le=300)
 
+
+AdviceMode = Literal["top_up", "recipe", "swap", "portion", "coach", "review"]
+
+
+class AdviceRequest(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    mode: AdviceMode
+    query: str = Field(default="", max_length=1200)
+
+
+class AdviceResult(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    summary: str = Field(min_length=1, max_length=700)
+    recommendations: list[str] = Field(min_length=1, max_length=8)
+    note: str = Field(default="", max_length=500)
+
+
+class NutritionLabelAnalysis(BaseModel):
+    product_name: str = Field(min_length=1, max_length=160)
+    serving: str = Field(default="Не указано", max_length=100)
+    kcal_per_100g: float | None = Field(default=None, ge=0, le=2000)
+    protein_per_100g: float | None = Field(default=None, ge=0, le=100)
+    fat_per_100g: float | None = Field(default=None, ge=0, le=100)
+    carbs_per_100g: float | None = Field(default=None, ge=0, le=100)
+    ingredients: list[str] = Field(default_factory=list, max_length=30)
+    allergens: list[str] = Field(default_factory=list, max_length=20)
+    notes: list[str] = Field(default_factory=list, max_length=10)
+    confidence: float = Field(ge=0, le=1)
+
+
+class ReminderSettingsInput(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    enabled: bool = False
+    meal_reminders: bool = True
+    weigh_reminder: bool = True
+    weekly_report: bool = True
+    breakfast_time: str = Field(default="09:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    lunch_time: str = Field(default="14:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    evening_time: str = Field(default="20:30", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    weigh_weekday: int = Field(default=0, ge=0, le=6)
+    weigh_time: str = Field(default="09:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    weekly_time: str = Field(default="19:00", pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    timezone: str = Field(default="Europe/Moscow", min_length=1, max_length=80)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("Неизвестный часовой пояс") from exc
+        return value

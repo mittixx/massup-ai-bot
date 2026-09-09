@@ -89,8 +89,35 @@ class Database:
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (telegram_user_id) REFERENCES profiles(telegram_user_id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS reminder_settings (
+                    telegram_user_id INTEGER PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    meal_reminders INTEGER NOT NULL DEFAULT 1,
+                    weigh_reminder INTEGER NOT NULL DEFAULT 1,
+                    weekly_report INTEGER NOT NULL DEFAULT 1,
+                    breakfast_time TEXT NOT NULL DEFAULT '09:00',
+                    lunch_time TEXT NOT NULL DEFAULT '14:00',
+                    evening_time TEXT NOT NULL DEFAULT '20:30',
+                    weigh_weekday INTEGER NOT NULL DEFAULT 0,
+                    weigh_time TEXT NOT NULL DEFAULT '09:00',
+                    weekly_time TEXT NOT NULL DEFAULT '19:00',
+                    timezone TEXT NOT NULL DEFAULT 'Europe/Moscow',
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (telegram_user_id) REFERENCES profiles(telegram_user_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS reminder_log (
+                    telegram_user_id INTEGER NOT NULL,
+                    reminder_kind TEXT NOT NULL,
+                    sent_on TEXT NOT NULL,
+                    sent_at TEXT NOT NULL,
+                    PRIMARY KEY (telegram_user_id, reminder_kind, sent_on),
+                    FOREIGN KEY (telegram_user_id) REFERENCES profiles(telegram_user_id) ON DELETE CASCADE
+                );
                 CREATE INDEX IF NOT EXISTS idx_meals_user_date ON meals(telegram_user_id, eaten_on);
                 CREATE INDEX IF NOT EXISTS idx_weights_user_date ON weights(telegram_user_id, measured_on);
+                CREATE INDEX IF NOT EXISTS idx_reminder_enabled ON reminder_settings(enabled);
                 """
             )
 
@@ -180,6 +207,18 @@ class Database:
             rows = db.execute(
                 "SELECT * FROM meals WHERE telegram_user_id=? AND eaten_on=? ORDER BY id DESC",
                 (user_id, eaten_on),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def meals_between(self, user_id: int, start: str, end: str) -> list[dict[str, Any]]:
+        with self.connect() as db:
+            rows = db.execute(
+                """
+                SELECT * FROM meals
+                WHERE telegram_user_id=? AND eaten_on BETWEEN ? AND ?
+                ORDER BY eaten_on, id
+                """,
+                (user_id, start, end),
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -289,3 +328,88 @@ class Database:
                 (user_id,),
             ).fetchone()
         return json.loads(row["plan_json"]) if row else None
+
+    @staticmethod
+    def default_reminders(user_id: int) -> dict[str, Any]:
+        return {
+            "telegram_user_id": user_id,
+            "enabled": False,
+            "meal_reminders": True,
+            "weigh_reminder": True,
+            "weekly_report": True,
+            "breakfast_time": "09:00",
+            "lunch_time": "14:00",
+            "evening_time": "20:30",
+            "weigh_weekday": 0,
+            "weigh_time": "09:00",
+            "weekly_time": "19:00",
+            "timezone": "Europe/Moscow",
+        }
+
+    def get_reminders(self, user_id: int) -> dict[str, Any]:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM reminder_settings WHERE telegram_user_id=?", (user_id,)
+            ).fetchone()
+        if not row:
+            return self.default_reminders(user_id)
+        result = dict(row)
+        for field in ("enabled", "meal_reminders", "weigh_reminder", "weekly_report"):
+            result[field] = bool(result[field])
+        result.pop("updated_at", None)
+        return result
+
+    def save_reminders(self, data: dict[str, Any]) -> dict[str, Any]:
+        fields = (
+            "telegram_user_id", "enabled", "meal_reminders", "weigh_reminder",
+            "weekly_report", "breakfast_time", "lunch_time", "evening_time",
+            "weigh_weekday", "weigh_time", "weekly_time", "timezone",
+        )
+        values = [int(data[field]) if isinstance(data[field], bool) else data[field] for field in fields]
+        with self._lock, self.connect() as db:
+            db.execute(
+                f"""
+                INSERT INTO reminder_settings ({', '.join(fields)}, updated_at)
+                VALUES ({', '.join('?' for _ in fields)}, ?)
+                ON CONFLICT(telegram_user_id) DO UPDATE SET
+                    enabled=excluded.enabled,
+                    meal_reminders=excluded.meal_reminders,
+                    weigh_reminder=excluded.weigh_reminder,
+                    weekly_report=excluded.weekly_report,
+                    breakfast_time=excluded.breakfast_time,
+                    lunch_time=excluded.lunch_time,
+                    evening_time=excluded.evening_time,
+                    weigh_weekday=excluded.weigh_weekday,
+                    weigh_time=excluded.weigh_time,
+                    weekly_time=excluded.weekly_time,
+                    timezone=excluded.timezone,
+                    updated_at=excluded.updated_at
+                """,
+                [*values, self._now()],
+            )
+        return self.get_reminders(int(data["telegram_user_id"]))
+
+    def enabled_reminders(self) -> list[dict[str, Any]]:
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM reminder_settings WHERE enabled=1"
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            for field in ("enabled", "meal_reminders", "weigh_reminder", "weekly_report"):
+                item[field] = bool(item[field])
+            result.append(item)
+        return result
+
+    def claim_reminder(self, user_id: int, kind: str, sent_on: str) -> bool:
+        with self._lock, self.connect() as db:
+            cursor = db.execute(
+                """
+                INSERT OR IGNORE INTO reminder_log(
+                    telegram_user_id, reminder_kind, sent_on, sent_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (user_id, kind, sent_on, self._now()),
+            )
+        return cursor.rowcount > 0

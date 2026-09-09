@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.ai_service import NutritionAI
 from app.api import router as api_router
-from app.bot import create_dispatcher
+from app.bot import create_dispatcher, reminder_loop
 from app.config import Settings, get_settings
 from app.database import Database
 
@@ -49,6 +49,7 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
         app.state.db.initialize()
         app.state.ai = NutritionAI(settings)
         bot_task = None
+        reminder_task = None
         bot = None
         if settings.run_bot and settings.bot_token:
             bot, dispatcher = create_dispatcher(app.state.db, app.state.ai, settings)
@@ -61,7 +62,9 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
                     error = task.exception()
                     logger.error("BOT_POLLING_STOPPED type=%s", type(error).__name__ if error else "normal_exit")
             bot_task.add_done_callback(polling_done)
+            reminder_task = asyncio.create_task(reminder_loop(bot, app.state.db))
         app.state.bot_task = bot_task
+        app.state.reminder_task = reminder_task
         probe_task = asyncio.create_task(check_local_http(settings))
         logger.info("MASSUP_START version=%s bind=%s:%s", VERSION, settings.host, settings.port)
         try:
@@ -74,6 +77,10 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
                 bot_task.cancel()
                 with suppress(asyncio.CancelledError, Exception):
                     await bot_task
+            if reminder_task:
+                reminder_task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await reminder_task
             if bot:
                 await bot.session.close()
 
@@ -113,6 +120,7 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
             "bot_configured": bool(settings.bot_token),
             "ai_configured": bool(settings.openai_api_key),
             "public_access": settings.public_access,
+            "reminders": "active" if getattr(app.state, "reminder_task", None) else "disabled",
         })
 
     @app.get("/", include_in_schema=False)

@@ -2,7 +2,15 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from app.bot import backup_database, configure_bot, create_dispatcher, restore_database, start, text_budget
+from app.bot import (
+    backup_database,
+    configure_bot,
+    create_dispatcher,
+    restore_database,
+    send_due_reminders,
+    start,
+    text_budget,
+)
 from app.config import Settings
 from app.database import Database
 from app.ai_service import NutritionAI
@@ -98,3 +106,29 @@ def test_restore_is_owner_only_and_restores_backup(tmp_path):
         await restore_database(outsider, bot)
         outsider.answer.assert_awaited_once_with("Это персональный бот. Доступ закрыт.")
     asyncio.run(scenario())
+
+
+def test_due_reminder_is_sent_only_once(tmp_path):
+    from datetime import UTC, datetime
+
+    settings = Settings(
+        bot_token="123:fake", public_access=True, webapp_url="https://example.com", run_bot=False
+    )
+    db = Database(str(tmp_path / "reminder.db"))
+    db.initialize()
+    db.upsert_profile({
+        "telegram_user_id": 42, "name": "Reminder", "sex": "male", "age": 20,
+        "height_cm": 180, "weight_kg": 70, "target_weight_kg": 78,
+        "activity": "medium", "meals_per_day": 4, "allergies": "",
+        "dislikes": "", "city": "", "stores": "", "weekly_budget": 4500,
+    })
+    reminder = db.default_reminders(42)
+    reminder.update(enabled=True, timezone="UTC", breakfast_time="09:00")
+    db.save_reminders(reminder)
+    configure_bot(db, NutritionAI(settings), settings)
+    bot = SimpleNamespace(send_message=AsyncMock())
+    now = datetime(2026, 9, 10, 9, 4, tzinfo=UTC)
+
+    assert asyncio.run(send_due_reminders(bot, db, now)) == 1
+    assert asyncio.run(send_due_reminders(bot, db, now)) == 0
+    bot.send_message.assert_awaited_once()

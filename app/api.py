@@ -1,19 +1,22 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 import logging
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 
 from app.ai_service import AIUnavailableError
 from app.auth import current_user_id
+from app.insights import build_insights, meal_totals
 from app.nutrition import calculate_targets, percent
 from app.schemas import (
+    AdviceRequest,
     ManualMealInput,
     MealCorrection,
     PlanRequest,
     ProfileInput,
     ProfileResponse,
+    ReminderSettingsInput,
     WeightInput,
 )
 
@@ -33,6 +36,21 @@ def _check_payload_user(request: Request, payload_user_id: int) -> int:
     if payload_user_id != user_id:
         raise HTTPException(status_code=403, detail="Нельзя изменять данные другого пользователя")
     return user_id
+
+
+def _profile_and_context(request: Request, user_id: int):
+    record = request.app.state.db.get_profile(user_id)
+    if not record:
+        raise HTTPException(status_code=409, detail="Сначала заполните профиль")
+    profile = ProfileInput(**record)
+    targets = calculate_targets(profile)
+    meals = request.app.state.db.meals_for_day(user_id, str(date.today()))
+    totals = meal_totals(meals)
+    remaining = {
+        key: max(0, round(getattr(targets, key if key != "kcal" else "calories") - totals[key], 1))
+        for key in ("kcal", "protein", "fat", "carbs")
+    }
+    return profile, targets, totals, remaining
 
 
 @router.get("/profile")
@@ -205,3 +223,78 @@ def add_weight(request: Request, payload: WeightInput):
 @router.get("/progress")
 def progress(request: Request):
     return {"weights": request.app.state.db.weights(_uid(request))}
+
+
+@router.get("/insights")
+def insights(request: Request):
+    user_id = _uid(request)
+    record = request.app.state.db.get_profile(user_id)
+    if not record:
+        raise HTTPException(status_code=409, detail="Сначала заполните профиль")
+    profile = ProfileInput(**record)
+    targets = calculate_targets(profile).model_dump()
+    today = date.today()
+    meals = request.app.state.db.meals_between(
+        user_id, str(today - timedelta(days=365)), str(today)
+    )
+    weights = request.app.state.db.weights(user_id, 365)
+    return build_insights(record, targets, meals, weights, today)
+
+
+@router.post("/advice")
+async def advice(request: Request, payload: AdviceRequest):
+    user_id = _check_payload_user(request, payload.telegram_user_id)
+    if payload.mode in {"recipe", "swap", "portion"} and not payload.query.strip():
+        raise HTTPException(status_code=422, detail="Опишите продукты или блюдо")
+    profile, targets, totals, remaining = _profile_and_context(request, user_id)
+    try:
+        return await request.app.state.ai.make_advice(
+            profile,
+            targets.model_dump(),
+            totals,
+            remaining,
+            request.app.state.db.weights(user_id, 90),
+            payload.mode,
+            payload.query.strip(),
+        )
+    except AIUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Unexpected advice error: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Не удалось подготовить рекомендацию. Повторите позже.") from exc
+
+
+@router.post("/label")
+async def label_analysis(request: Request, image: UploadFile = File(...)):
+    user_id = _uid(request)
+    if not request.app.state.db.get_profile(user_id):
+        raise HTTPException(status_code=409, detail="Сначала заполните профиль")
+    if image.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Нужна фотография JPG, PNG или WEBP")
+    content = await image.read(12 * 1024 * 1024 + 1)
+    if len(content) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Фотография должна быть меньше 12 МБ")
+    try:
+        return await request.app.state.ai.analyze_label(
+            content, image.content_type or "image/jpeg"
+        )
+    except AIUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.error("Unexpected label analysis error: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Не удалось прочитать этикетку. Повторите позже.") from exc
+
+
+@router.get("/reminders")
+def get_reminders(request: Request):
+    return request.app.state.db.get_reminders(_uid(request))
+
+
+@router.put("/reminders")
+def save_reminders(request: Request, payload: ReminderSettingsInput):
+    user_id = _check_payload_user(request, payload.telegram_user_id)
+    if not request.app.state.db.get_profile(user_id):
+        raise HTTPException(status_code=409, detail="Сначала заполните профиль")
+    data = payload.model_dump()
+    data["telegram_user_id"] = user_id
+    return request.app.state.db.save_reminders(data)

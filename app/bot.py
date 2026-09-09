@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from tempfile import TemporaryDirectory
 
 from aiogram import Bot, Dispatcher, F, Router
@@ -11,6 +13,7 @@ from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarku
 from app.ai_service import AIUnavailableError, NutritionAI
 from app.config import Settings
 from app.database import Database
+from app.insights import build_insights, due_reminder_kinds, meal_totals
 from app.nutrition import calculate_targets
 from app.schemas import ProfileInput
 
@@ -18,6 +21,7 @@ from app.schemas import ProfileInput
 _db: Database | None = None
 _ai: NutritionAI | None = None
 _settings: Settings | None = None
+logger = logging.getLogger("uvicorn.error")
 
 
 def configure_bot(db: Database, ai: NutritionAI, settings: Settings) -> None:
@@ -59,7 +63,7 @@ async def start(message: Message):
         "Привет! Я твой AI-помощник для набора веса.\n\n"
         "Отправь фотографию еды — я оценю порцию и КБЖУ.\n"
         "Напиши «4000 на неделю» — соберу меню и список покупок.\n"
-        "Команды: /today, /plan 4000, /app.\n\n"
+        "Команды: /today, /suggest, /report, /plan 4000, /app.\n\n"
         "Оценка еды по фото приблизительная: граммовку, масло и соусы лучше проверять.",
         reply_markup=app_keyboard(),
     )
@@ -152,6 +156,186 @@ async def restore_help(message: Message):
     if await reject_if_needed(message):
         return
     await message.answer("Прикрепи файл nutrition.db как документ и добавь подпись /restore.")
+
+
+def _command_argument(message: Message) -> str:
+    text = message.text or message.caption or ""
+    return text.split(maxsplit=1)[1].strip() if len(text.split(maxsplit=1)) == 2 else ""
+
+
+def _context(user_id: int):
+    if _db is None:
+        return None
+    record = _db.get_profile(user_id)
+    if not record:
+        return None
+    profile = ProfileInput(**record)
+    targets = calculate_targets(profile)
+    meals = _db.meals_for_day(user_id, str(date.today()))
+    totals = meal_totals(meals)
+    remaining = {
+        key: max(0, round(getattr(targets, key if key != "kcal" else "calories") - totals[key], 1))
+        for key in ("kcal", "protein", "fat", "carbs")
+    }
+    return record, profile, targets, totals, remaining
+
+
+def _format_advice(result) -> str:
+    items = "\n".join(f"• {item}" for item in result.recommendations)
+    note = f"\n\n{result.note}" if result.note else ""
+    return f"{result.title}\n\n{result.summary}\n\n{items}{note}"
+
+
+async def advice_for_message(message: Message, mode: str, query: str = ""):
+    if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
+        return
+    context = _context(message.from_user.id)
+    if not context:
+        await message.answer("Сначала открой Mini App и заполни профиль.", reply_markup=app_keyboard())
+        return
+    if mode in {"recipe", "swap", "portion"} and not query:
+        examples = {
+            "recipe": "/recipe яйца, творог, банан",
+            "swap": "/swap овсянка с молоком",
+            "portion": "/portion рис с курицей",
+        }
+        await message.answer(f"Добавь описание. Например: {examples[mode]}")
+        return
+    _, profile, targets, totals, remaining = context
+    status = await message.answer("AI готовит персональную рекомендацию…")
+    try:
+        result = await _ai.make_advice(
+            profile,
+            targets.model_dump(),
+            totals,
+            remaining,
+            _db.weights(message.from_user.id, 90),
+            mode,
+            query,
+        )
+    except AIUnavailableError as exc:
+        await status.edit_text(str(exc))
+        return
+    except Exception:
+        await status.edit_text("Не удалось подготовить рекомендацию. Повтори позже.")
+        return
+    await status.edit_text(_format_advice(result), reply_markup=app_keyboard())
+
+
+async def suggest_command(message: Message):
+    await advice_for_message(message, "top_up")
+
+
+async def recipe_command(message: Message):
+    await advice_for_message(message, "recipe", _command_argument(message))
+
+
+async def swap_command(message: Message):
+    await advice_for_message(message, "swap", _command_argument(message))
+
+
+async def portion_command(message: Message):
+    await advice_for_message(message, "portion", _command_argument(message))
+
+
+async def coach_command(message: Message):
+    await advice_for_message(
+        message,
+        "coach",
+        _command_argument(message) or "Почему вес может не расти и что улучшить?",
+    )
+
+
+async def review_command(message: Message):
+    await advice_for_message(message, "review")
+
+
+def _report_text(user_id: int, report_day: date | None = None) -> str | None:
+    if _db is None:
+        return None
+    report_day = report_day or date.today()
+    record = _db.get_profile(user_id)
+    if not record:
+        return None
+    profile = ProfileInput(**record)
+    insights = build_insights(
+        record,
+        calculate_targets(profile).model_dump(),
+        _db.meals_between(user_id, str(report_day - timedelta(days=365)), str(report_day)),
+        _db.weights(user_id, 365),
+        report_day,
+    )
+    week = insights["week"]
+    forecast = insights["forecast"]
+    achievement = (
+        f"\nДостижения: {', '.join(item['title'] for item in insights['achievements'][-3:])}"
+        if insights["achievements"] else ""
+    )
+    return (
+        "Отчёт MassUp AI за 7 дней\n\n"
+        f"Дней с записями: {week['days_logged']} из 7\n"
+        f"Дней около нормы: {week['days_on_target']}\n"
+        f"Среднее: {round(week['averages']['kcal'])} ккал · "
+        f"Б {round(week['averages']['protein'])} г\n"
+        f"Изменение веса: {week['weight_change_kg']:+g} кг\n"
+        f"Серия: {insights['streak_days']} дн.\n\n"
+        f"Прогноз: {forecast['message']}{achievement}"
+    )
+
+
+async def report_command(message: Message):
+    if await reject_if_needed(message) or not message.from_user:
+        return
+    text = _report_text(message.from_user.id)
+    if not text:
+        await message.answer("Сначала открой Mini App и заполни профиль.", reply_markup=app_keyboard())
+        return
+    await message.answer(text, reply_markup=app_keyboard())
+
+
+async def reminders_command(message: Message):
+    if await reject_if_needed(message):
+        return
+    await message.answer(
+        "Настрой время приёмов пищи, взвешивания и еженедельного отчёта во вкладке «AI-тренер».",
+        reply_markup=app_keyboard(),
+    )
+
+
+async def label_photo(message: Message, bot: Bot):
+    if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
+        return
+    if not _db.get_profile(message.from_user.id):
+        await message.answer("Сначала открой Mini App и заполни профиль.", reply_markup=app_keyboard())
+        return
+    status = await message.answer("Читаю состав и КБЖУ с этикетки…")
+    try:
+        file = await bot.get_file(message.photo[-1].file_id)
+        stream = await bot.download_file(file.file_path)
+        result = await _ai.analyze_label(stream.read(), "image/jpeg")
+    except AIUnavailableError as exc:
+        await status.edit_text(str(exc))
+        return
+    except Exception:
+        await status.edit_text("Не удалось прочитать этикетку. Сделай фото ближе и без бликов.")
+        return
+    macros = (
+        f"На 100 г: {result.kcal_per_100g if result.kcal_per_100g is not None else '—'} ккал · "
+        f"Б {result.protein_per_100g if result.protein_per_100g is not None else '—'} · "
+        f"Ж {result.fat_per_100g if result.fat_per_100g is not None else '—'} · "
+        f"У {result.carbs_per_100g if result.carbs_per_100g is not None else '—'}"
+    )
+    allergens = ", ".join(result.allergens) or "не указаны"
+    await status.edit_text(
+        f"{result.product_name}\n{macros}\nПорция: {result.serving}\nАллергены: {allergens}\n\n"
+        "Проверь цифры по оригинальной упаковке: качество распознавания зависит от фото."
+    )
+
+
+async def label_help(message: Message):
+    if await reject_if_needed(message):
+        return
+    await message.answer("Отправь фотографию таблицы КБЖУ с подписью /label.")
 
 
 async def generate_plan_for_message(message: Message, budget: int):
@@ -247,6 +431,64 @@ async def text_budget(message: Message):
         )
 
 
+def _reminder_message(user_id: int, kind: str, local_day: date) -> str:
+    if kind == "breakfast":
+        return "Доброе утро! Запиши завтрак — так дневная норма будет точнее."
+    if kind == "lunch":
+        return "Время свериться с дневником: добавь обед или перекус."
+    if kind == "weigh":
+        return "Пора взвеситься. Лучше делать это утром в одинаковых условиях."
+    if kind == "weekly":
+        return _report_text(user_id, local_day) or "Твой еженедельный отчёт готов в Mini App."
+    context = _context(user_id)
+    if not context:
+        return "Заполни профиль в Mini App, чтобы получать персональные напоминания."
+    remaining = context[-1]
+    if remaining["kcal"] <= 0:
+        return "Дневная цель по калориям выполнена. Проверь итог и не забудь сохранить прогресс."
+    return (
+        f"До дневной цели осталось примерно {round(remaining['kcal'])} ккал "
+        f"и {round(remaining['protein'])} г белка. Нажми /suggest, чтобы подобрать добор."
+    )
+
+
+async def send_due_reminders(
+    bot: Bot, db: Database, now: datetime | None = None
+) -> int:
+    sent = 0
+    for settings in db.enabled_reminders():
+        local_day, kinds = due_reminder_kinds(settings, now or datetime.now(UTC))
+        user_id = int(settings["telegram_user_id"])
+        for kind in kinds:
+            if not db.claim_reminder(user_id, kind, str(local_day)):
+                continue
+            try:
+                await bot.send_message(
+                    user_id,
+                    _reminder_message(user_id, kind, local_day),
+                    reply_markup=app_keyboard(),
+                )
+                sent += 1
+            except Exception as exc:
+                logger.warning(
+                    "REMINDER_SEND_FAILED user=%s kind=%s type=%s",
+                    user_id,
+                    kind,
+                    type(exc).__name__,
+                )
+    return sent
+
+
+async def reminder_loop(bot: Bot, db: Database) -> None:
+    """Send opted-in reminders; the unique log prevents duplicates after restarts."""
+    while True:
+        try:
+            await send_due_reminders(bot, db)
+        except Exception as exc:
+            logger.error("REMINDER_LOOP_ERROR type=%s", type(exc).__name__)
+        await asyncio.sleep(60)
+
+
 def create_dispatcher(db: Database, ai: NutritionAI, settings: Settings) -> tuple[Bot, Dispatcher]:
     configure_bot(db, ai, settings)
     bot = Bot(settings.bot_token)
@@ -255,10 +497,20 @@ def create_dispatcher(db: Database, ai: NutritionAI, settings: Settings) -> tupl
     router.message.register(start, CommandStart())
     router.message.register(open_app, Command("app"))
     router.message.register(today, Command("today"))
+    router.message.register(suggest_command, Command("suggest"))
+    router.message.register(recipe_command, Command("recipe"))
+    router.message.register(swap_command, Command("swap"))
+    router.message.register(portion_command, Command("portion"))
+    router.message.register(coach_command, Command("coach"))
+    router.message.register(review_command, Command("review"))
+    router.message.register(report_command, Command("report"))
+    router.message.register(reminders_command, Command("reminders"))
     router.message.register(backup_database, Command("backup"))
     router.message.register(restore_database, Command("restore"), F.document)
     router.message.register(restore_help, Command("restore"))
     router.message.register(plan_command, Command("plan"))
+    router.message.register(label_photo, Command("label"), F.photo)
+    router.message.register(label_help, Command("label"))
     router.message.register(photo, F.photo)
     router.message.register(text_budget, F.text)
     dispatcher.include_router(router)

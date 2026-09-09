@@ -2,7 +2,16 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.schemas import DayPlan, FoodItem, GroceryItem, MealPlanItem, PhotoAnalysis, WeekPlan
+from app.schemas import (
+    AdviceResult,
+    DayPlan,
+    FoodItem,
+    GroceryItem,
+    MealPlanItem,
+    NutritionLabelAnalysis,
+    PhotoAnalysis,
+    WeekPlan,
+)
 
 
 def ready_client(tmp_path):
@@ -72,3 +81,64 @@ def test_week_plan_is_saved(tmp_path):
         assert response.status_code == 200
         assert len(response.json()["days"]) == 7
         assert client.get("/api/dashboard", headers=headers).json()["latest_plan"]["estimated_total"] == 4200
+
+
+def test_advice_and_label_endpoints(tmp_path):
+    app, client = ready_client(tmp_path)
+    headers = {"X-Debug-User-ID": "1"}
+    with client:
+        client.post("/api/profile", headers=headers, json=profile_payload())
+
+        async def fake_advice(*_args, **_kwargs):
+            return AdviceResult(
+                title="Добор на вечер",
+                summary="Осталось немного белка.",
+                recommendations=["Творог 200 г", "Банан 1 шт."],
+                note="КБЖУ приблизительные.",
+            )
+
+        async def fake_label(*_args, **_kwargs):
+            return NutritionLabelAnalysis(
+                product_name="Творог",
+                serving="200 г",
+                kcal_per_100g=120,
+                protein_per_100g=18,
+                fat_per_100g=5,
+                carbs_per_100g=3,
+                ingredients=["молоко"],
+                allergens=["молоко"],
+                notes=[],
+                confidence=0.9,
+            )
+
+        app.state.ai.make_advice = fake_advice
+        app.state.ai.analyze_label = fake_label
+        advice = client.post(
+            "/api/advice",
+            headers=headers,
+            json={"telegram_user_id": 1, "mode": "top_up", "query": ""},
+        )
+        assert advice.status_code == 200
+        assert advice.json()["recommendations"][0] == "Творог 200 г"
+        label = client.post(
+            "/api/label",
+            headers=headers,
+            files={"image": ("label.jpg", b"fake", "image/jpeg")},
+        )
+        assert label.status_code == 200
+        assert label.json()["protein_per_100g"] == 18
+
+
+def test_insights_and_reminder_endpoints(tmp_path):
+    app, client = ready_client(tmp_path)
+    headers = {"X-Debug-User-ID": "1"}
+    with client:
+        client.post("/api/profile", headers=headers, json=profile_payload())
+        insights = client.get("/api/insights", headers=headers)
+        assert insights.status_code == 200
+        assert insights.json()["streak_days"] == 0
+        reminders = client.get("/api/reminders", headers=headers).json()
+        reminders.update(enabled=True, timezone="Europe/Moscow")
+        saved = client.put("/api/reminders", headers=headers, json=reminders)
+        assert saved.status_code == 200
+        assert saved.json()["enabled"] is True

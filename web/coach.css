@@ -1,0 +1,32 @@
+nav{grid-template-columns:repeat(5,1fr)}
+.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.insight-card,.coach-card{background:#fff;border-radius:22px;padding:18px;margin-bottom:10px;box-shadow:0 8px 30px #18251e0a}
+.insight-card{min-height:125px;display:flex;flex-direction:column}
+.insight-card.accent{background:linear-gradient(145deg,#18251f,#273b30);color:#fff}
+.insight-card span,.card-kicker{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#7d8982}
+.insight-card.accent span,.insight-card.accent small{color:#b8c8be}
+.insight-card strong{font-size:31px;line-height:1.1;margin:13px 0 5px;color:#18251f}
+.insight-card.accent strong{color:#cdeb99}
+.insight-card small{font-size:10px;color:#7d8982;margin-top:auto}
+.coach-card h3{margin:8px 0 8px;font-size:19px}
+.coach-card p{font-size:12px;line-height:1.55;color:#66716b;margin:0 0 14px}
+.coach-card label{display:grid;gap:6px;font-size:10px;color:#66716b;margin:12px 0}
+.coach-card textarea,.coach-card select,.coach-card input[type=time]{width:100%;box-sizing:border-box;border:1px solid #dfe5e1;background:#f7f9f7;border-radius:12px;padding:11px;font:inherit;color:#17211c}
+.assistant-result:empty{display:none}
+.assistant-result{margin-top:14px;padding:15px;background:#f1f6ed;border-radius:15px;font-size:12px;line-height:1.55}
+.assistant-result h4{font-size:16px;margin:0 0 7px}
+.assistant-result ul{margin:9px 0 0;padding-left:18px}
+.assistant-result li{margin:6px 0}
+.achievement-list{display:flex;gap:7px;overflow-x:auto;padding-bottom:2px}
+.achievement{flex:0 0 auto;padding:8px 10px;border-radius:12px;background:#edf5e7;font-size:10px;color:#35503f}
+.compact-upload{padding:14px;border:1px dashed #a8b6ad;border-radius:14px;cursor:pointer}
+.compact-upload strong{font-size:12px;color:#1c2a22}
+.compact-upload span{font-size:10px;color:#7d8982}
+.primary.secondary{background:#26372e;margin-top:8px}
+.toggle-row{grid-template-columns:1fr auto!important;align-items:center;gap:14px!important;padding:10px 0;border-bottom:1px solid #edf0ee}
+.toggle-row span{display:grid;gap:3px}
+.toggle-row b{font-size:12px;color:#1c2a22}
+.toggle-row small{font-size:9px;color:#7d8982}
+.toggle-row input{width:21px;height:21px;accent-color:#759e45}
+.reminder-times{gap:7px}
+@media(max-width:370px){nav button{font-size:8px}.insight-card{padding:14px}.reminder-times{grid-template-columns:1fr}}

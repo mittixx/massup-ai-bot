@@ -5,6 +5,7 @@ const telegramUser = tg?.initDataUnsafe?.user;
 const userId = telegramUser?.id || 1;
 const headers = () => ({"X-Telegram-Init-Data": initData, "X-Debug-User-ID": String(userId)});
 let selectedPhoto = null;
+let selectedLabel = null;
 let latestMeals = [];
 
 const $ = id => document.getElementById(id);
@@ -23,7 +24,7 @@ async function api(path, options={}) {
   }
   return response.json();
 }
-function switchView(id){ document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id===id)); document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id)); window.scrollTo({top:0,behavior:"smooth"}); if(id==="todayView")loadDashboard(); if(id==="profileView")loadProgress(); }
+function switchView(id){ document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id===id)); document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id)); window.scrollTo({top:0,behavior:"smooth"}); if(id==="todayView")loadDashboard(); if(id==="profileView")loadProgress(); if(id==="coachView")Promise.all([loadInsights(),loadReminders()]); }
 document.querySelectorAll("nav button").forEach(b=>b.addEventListener("click",()=>switchView(b.dataset.view)));
 $("profileShortcut").onclick=()=>switchView("profileView");
 document.querySelectorAll("[data-close-dialog]").forEach(button => {
@@ -72,6 +73,20 @@ function renderPlan(p){
   const groceries=p.groceries.map(g=>`<div class="grocery-row"><div><b>${escapeHtml(g.name)}</b><br><span>${escapeHtml(g.quantity)}</span></div><strong>≈ ${g.estimated_price} ₽</strong></div>`).join("");
   $("planResult").innerHTML=`<article class="plan-summary"><h3>${escapeHtml(p.title)}</h3><p>Расчётная корзина: <b>${p.estimated_total} ₽</b> из ${p.budget} ₽</p><small>Цены ориентировочные и зависят от магазина.</small></article>${days}<article class="grocery-card"><h3>Список покупок</h3>${groceries}</article><article class="grocery-card"><h3>План готовки</h3><ol>${p.prep_plan.map(x=>`<li>${escapeHtml(x)}</li>`).join("")}</ol></article>`;
 }
+
+const adviceHints={top_up:"Дневник уже содержит нужные данные",review:"AI проверит сегодняшний рацион",recipe:"Например: творог, банан, яйца",swap:"Например: заменить овсянку без молока",portion:"Например: рис с курицей",coach:"Например: почему вес не растёт вторую неделю?"};
+function updateAdviceMode(){const mode=$("adviceMode").value,needsQuery=!['top_up','review'].includes(mode);$("adviceQueryWrap").style.display=needsQuery?'grid':'none';$("adviceQuery").placeholder=adviceHints[mode];}
+$("adviceMode").onchange=updateAdviceMode;updateAdviceMode();
+function renderAdvice(result,target="adviceResult"){const note=result.note?`<p>${escapeHtml(result.note)}</p>`:"";$(target).innerHTML=`<h4>${escapeHtml(result.title)}</h4><p>${escapeHtml(result.summary)}</p><ul>${result.recommendations.map(item=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>${note}`;}
+$("adviceButton").onclick=async()=>{const button=$("adviceButton"),old=button.textContent,mode=$("adviceMode").value;button.disabled=true;button.innerHTML='<i class="loader"></i>AI анализирует';try{const result=await api("/api/advice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({telegram_user_id:userId,mode,query:$("adviceQuery").value})});renderAdvice(result);}catch(e){toast(e.message)}finally{button.disabled=false;button.textContent=old;}};
+
+async function loadInsights(){try{const data=await api("/api/insights"),week=data.week,forecast=data.forecast;$("streakValue").textContent=data.streak_days;$("weekValue").textContent=`${week.days_logged}/7`;$("weekDetails").textContent=`${week.days_on_target} дн. около нормы · в среднем ${Math.round(week.averages.kcal)} ккал`;$("forecastTitle").textContent=forecast.status==='achieved'?'Цель достигнута':forecast.weekly_rate?`${forecast.weekly_rate>0?'+':''}${forecast.weekly_rate} кг в неделю`:'Набираем данные';$("forecastText").textContent=forecast.message;$("achievementList").innerHTML=data.achievements.length?data.achievements.map(item=>`<span class="achievement" title="${escapeHtml(item.text)}">✓ ${escapeHtml(item.title)}</span>`).join(""):'<span class="achievement">Первое достижение уже близко</span>';}catch(e){toast(e.message)}}
+
+$("labelInput").onchange=event=>{selectedLabel=event.target.files[0];$("labelFileName").textContent=selectedLabel?.name||"Файл не выбран";$("labelButton").disabled=!selectedLabel;};
+$("labelButton").onclick=async()=>{const button=$("labelButton"),old=button.textContent;button.disabled=true;button.innerHTML='<i class="loader"></i>Читаю этикетку';const form=new FormData();form.append("image",selectedLabel);try{const result=await api("/api/label",{method:"POST",body:form}),value=x=>x??'—';$("labelResult").innerHTML=`<h4>${escapeHtml(result.product_name)}</h4><p>На 100 г: <b>${value(result.kcal_per_100g)} ккал</b> · Б ${value(result.protein_per_100g)} · Ж ${value(result.fat_per_100g)} · У ${value(result.carbs_per_100g)}</p><p>Порция: ${escapeHtml(result.serving)}<br>Аллергены: ${result.allergens.length?result.allergens.map(escapeHtml).join(', '):'не указаны'}</p><ul>${result.notes.map(item=>`<li>${escapeHtml(item)}</li>`).join('')}</ul>`;}catch(e){toast(e.message)}finally{button.disabled=false;button.textContent=old;}};
+
+async function loadReminders(){try{const data=await api("/api/reminders"),form=$("reminderForm");for(const [key,value] of Object.entries(data)){const field=form.elements[key];if(!field)continue;if(field.type==='checkbox')field.checked=Boolean(value);else field.value=value;}form.elements.timezone.value=Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Moscow';}catch(e){toast(e.message)}}
+$("reminderForm").addEventListener("submit",async event=>{event.preventDefault();const form=event.target,data=Object.fromEntries(new FormData(form));for(const key of ['enabled','meal_reminders','weigh_reminder','weekly_report'])data[key]=form.elements[key].checked;data.telegram_user_id=userId;data.weigh_weekday=Number(data.weigh_weekday);data.timezone=Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Moscow';try{await api("/api/reminders",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});toast(data.enabled?'Напоминания включены':'Напоминания сохранены и выключены');}catch(e){toast(e.message)}});
 
 $("weightSave").onclick=async()=>{
   const input=$("weightInput"), button=$("weightSave"), weight=Number(input.value.replace(",","."));

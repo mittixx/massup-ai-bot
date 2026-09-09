@@ -76,3 +76,17 @@ test('weight bars use bounded non-growing width', () => {
   assert.match(css, /flex:\s*0 0 42px/);
   assert.match(css, /overflow-x:\s*auto/);
 });
+
+test('AI coach exposes all requested tools and reminders', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
+  for (const id of ['coachView', 'adviceMode', 'labelInput', 'reminderForm', 'forecastText', 'achievementList']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  for (const mode of ['top_up', 'review', 'recipe', 'swap', 'portion', 'coach']) {
+    assert.match(html, new RegExp(`value="${mode}"`));
+  }
+  assert.match(source, /\/api\/insights/);
+  assert.match(source, /\/api\/advice/);
+  assert.match(source, /\/api\/label/);
+  assert.match(source, /\/api\/reminders/);
+});

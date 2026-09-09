@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <meta name="theme-color" content="#111614">
   <title>MassUp AI</title>
-  <link rel="stylesheet" href="/static/style.css?v=1.0.8">
-  <link rel="stylesheet" href="/static/weight.css?v=1.0.8">
+  <link rel="stylesheet" href="/static/style.css?v=1.1.0">
+  <link rel="stylesheet" href="/static/weight.css?v=1.1.0">
+  <link rel="stylesheet" href="/static/coach.css?v=1.1.0">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -58,6 +59,67 @@
         <div id="planResult" class="plan-result"><p class="empty">AI составит 7 дней питания, рецепты и список покупок в пределах суммы.</p></div>
       </section>
 
+      <section class="view" id="coachView">
+        <div class="greeting"><p>ПЕРСОНАЛЬНАЯ АНАЛИТИКА</p><h2>AI‑тренер</h2></div>
+
+        <div class="insight-grid">
+          <article class="insight-card accent"><span>Текущая серия</span><strong id="streakValue">—</strong><small>дней с записями подряд</small></article>
+          <article class="insight-card"><span>Последние 7 дней</span><strong id="weekValue">—</strong><small id="weekDetails">Загружаю отчёт…</small></article>
+        </div>
+        <article class="coach-card">
+          <span class="card-kicker">ПРОГНОЗ ЦЕЛИ</span>
+          <h3 id="forecastTitle">Набираем данные</h3>
+          <p id="forecastText">Для прогноза нужны минимум два взвешивания в разные дни.</p>
+          <div id="achievementList" class="achievement-list"></div>
+        </article>
+
+        <article class="coach-card">
+          <span class="card-kicker">УМНЫЙ ПОМОЩНИК</span>
+          <h3>Что сделать прямо сейчас</h3>
+          <label>Режим
+            <select id="adviceMode">
+              <option value="top_up">Чем добрать норму сегодня</option>
+              <option value="review">Разобрать дневной рацион</option>
+              <option value="recipe">Рецепт из продуктов дома</option>
+              <option value="swap">Заменить блюдо</option>
+              <option value="portion">Рассчитать подходящую порцию</option>
+              <option value="coach">Спросить AI‑тренера</option>
+            </select>
+          </label>
+          <label id="adviceQueryWrap">Продукты или вопрос
+            <textarea id="adviceQuery" placeholder="Например: творог, банан, яйца"></textarea>
+          </label>
+          <button class="primary" id="adviceButton">Получить рекомендацию</button>
+          <div id="adviceResult" class="assistant-result"></div>
+        </article>
+
+        <article class="coach-card">
+          <span class="card-kicker">СКАНЕР ЭТИКЕТКИ</span>
+          <h3>КБЖУ и состав с упаковки</h3>
+          <p>Сфотографируй таблицу на упаковке крупно, ровно и без бликов.</p>
+          <label class="compact-upload" for="labelInput"><strong>Выбрать фотографию</strong><span id="labelFileName">Файл не выбран</span></label>
+          <input id="labelInput" type="file" accept="image/*" capture="environment" hidden>
+          <button class="primary secondary" id="labelButton" disabled>Прочитать этикетку</button>
+          <div id="labelResult" class="assistant-result"></div>
+        </article>
+
+        <article class="coach-card">
+          <span class="card-kicker">НАПОМИНАНИЯ</span>
+          <h3>Поддерживать режим</h3>
+          <form id="reminderForm" class="reminder-form">
+            <label class="toggle-row"><span><b>Включить напоминания</b><small>Бот будет писать в выбранное время</small></span><input name="enabled" type="checkbox"></label>
+            <label class="toggle-row"><span><b>Приёмы пищи</b><small>Завтрак, обед и вечерний остаток</small></span><input name="meal_reminders" type="checkbox" checked></label>
+            <div class="three reminder-times"><label>Завтрак<input name="breakfast_time" type="time" value="09:00"></label><label>Обед<input name="lunch_time" type="time" value="14:00"></label><label>Вечер<input name="evening_time" type="time" value="20:30"></label></div>
+            <label class="toggle-row"><span><b>Взвешивание</b><small>Один раз в неделю</small></span><input name="weigh_reminder" type="checkbox" checked></label>
+            <div class="two"><label>День<select name="weigh_weekday"><option value="0">Понедельник</option><option value="1">Вторник</option><option value="2">Среда</option><option value="3">Четверг</option><option value="4">Пятница</option><option value="5">Суббота</option><option value="6">Воскресенье</option></select></label><label>Время<input name="weigh_time" type="time" value="09:00"></label></div>
+            <label class="toggle-row"><span><b>Недельный отчёт</b><small>По воскресеньям</small></span><input name="weekly_report" type="checkbox" checked></label>
+            <label>Время отчёта<input name="weekly_time" type="time" value="19:00"></label>
+            <input name="timezone" type="hidden" value="Europe/Moscow">
+            <button class="primary" type="submit">Сохранить напоминания</button>
+          </form>
+        </article>
+      </section>
+
       <section class="view" id="profileView">
         <div class="greeting"><p>НАСТРОЙКИ</p><h2>Мой профиль</h2></div>
         <form id="profileForm" class="profile-form">
@@ -83,6 +145,7 @@
       <button class="active" data-view="todayView"><span>◉</span>Сегодня</button>
       <button data-view="cameraView"><span>＋</span>Фото</button>
       <button data-view="planView"><span>▦</span>Рацион</button>
+      <button data-view="coachView"><span>✦</span>AI</button>
       <button data-view="profileView"><span>○</span>Профиль</button>
     </nav>
   </div>
@@ -90,6 +153,6 @@
   <dialog id="manualDialog"><form id="manualForm" method="dialog"><div class="dialog-head"><h3>Добавить вручную</h3><button type="button" data-close-dialog aria-label="Закрыть">×</button></div><label>Название<input name="name" required placeholder="Творог с бананом"></label><div class="two"><label>Вес, г<input name="grams" type="number" value="0"></label><label>Ккал<input name="kcal" type="number" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Добавить</button></form></dialog>
   <dialog id="editDialog"><form id="editForm" method="dialog"><div class="dialog-head"><h3>Проверить оценку</h3><button type="button" data-close-dialog aria-label="Закрыть">×</button></div><input name="meal_id" type="hidden"><label>Название<input name="name" required></label><div class="two"><label>Вес, г<input name="grams" type="number" step="1"></label><label>Ккал<input name="kcal" type="number" step="1" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Сохранить изменения</button></form></dialog>
   <div class="toast" id="toast"></div>
-  <script src="/static/app.js?v=1.0.8"></script>
+  <script src="/static/app.js?v=1.1.0"></script>
 </body>
 </html>
