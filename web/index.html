@@ -5,10 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <meta name="theme-color" content="#111614">
   <title>MassUp AI</title>
-  <link rel="stylesheet" href="/static/style.css?v=1.2.0">
-  <link rel="stylesheet" href="/static/weight.css?v=1.2.0">
-  <link rel="stylesheet" href="/static/coach.css?v=1.2.0">
-  <link rel="stylesheet" href="/static/admin.css?v=1.2.0">
+  <link rel="stylesheet" href="/static/style.css?v=1.3.0">
+  <link rel="stylesheet" href="/static/weight.css?v=1.3.0">
+  <link rel="stylesheet" href="/static/coach.css?v=1.3.0">
+  <link rel="stylesheet" href="/static/admin.css?v=1.3.0">
+  <link rel="stylesheet" href="/static/features.css?v=1.3.0">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -47,6 +48,15 @@
         <button class="primary" id="analyzeButton" disabled>Распознать и записать</button>
         <p class="fine-print">Фото даёт приблизительную оценку. Проверь вес порции, масло и соусы.</p>
         <div id="analysisResult"></div>
+
+        <article class="feature-card">
+          <span class="card-kicker">ШТРИХКОД</span><h3>Добавить продукт с упаковки</h3>
+          <p>Введи цифры под штрихкодом или сфотографируй его камерой.</p>
+          <div class="two"><input id="barcodeInput" inputmode="numeric" maxlength="14" placeholder="4601234567890"><button class="small-action" id="barcodeButton">Найти</button></div>
+          <label class="compact-upload" for="barcodeImage"><strong>Сканировать камерой</strong><span id="barcodeFileName">Выбрать фото штрихкода</span></label>
+          <input id="barcodeImage" type="file" accept="image/*" capture="environment" hidden>
+          <div id="barcodeResult" class="barcode-result"></div>
+        </article>
       </section>
 
       <section class="view" id="planView">
@@ -67,6 +77,12 @@
           <article class="insight-card accent"><span>Текущая серия</span><strong id="streakValue">—</strong><small>дней с записями подряд</small></article>
           <article class="insight-card"><span>Последние 7 дней</span><strong id="weekValue">—</strong><small id="weekDetails">Загружаю отчёт…</small></article>
         </div>
+        <article class="coach-card">
+          <span class="card-kicker">УРОВЕНЬ И НАГРАДЫ</span>
+          <h3 id="levelTitle">Уровень загружается…</h3>
+          <p id="levelText">Баллы начисляются за дневник, взвешивания и выполнение нормы.</p>
+          <div class="water-progress"><i id="levelProgress"></i></div>
+        </article>
         <article class="coach-card">
           <span class="card-kicker">ПРОГНОЗ ЦЕЛИ</span>
           <h3 id="forecastTitle">Набираем данные</h3>
@@ -121,6 +137,75 @@
         </article>
       </section>
 
+      <section class="view" id="toolsView">
+        <div class="greeting"><p>ПРОГРЕСС И ПРИВЫЧКИ</p><h2>Ещё больше пользы</h2></div>
+
+        <article class="feature-card dark">
+          <span class="card-kicker">ИЗБРАННЫЕ БЛЮДА</span><h3>Добавить еду одним нажатием</h3>
+          <p>Сохраняй частые завтраки, перекусы и коктейли из дневника.</p>
+          <div id="favoriteList" class="compact-list"></div>
+        </article>
+
+        <article class="feature-card">
+          <span class="card-kicker">ВОДА</span><h3>Водный баланс</h3>
+          <div class="water-summary"><strong class="water-value" id="waterValue">0 мл</strong><div><div class="water-progress"><i id="waterBar"></i></div><p id="waterTargetText">Загружаю цель…</p></div></div>
+          <div class="quick-actions"><button data-water="250">+250 мл</button><button data-water="350">+350 мл</button><button data-water="500">+500 мл</button></div>
+          <div id="waterEntries" class="compact-list"></div>
+        </article>
+
+        <article class="feature-card">
+          <span class="card-kicker">ТРЕНИРОВКИ</span><h3>История занятий</h3>
+          <form id="workoutForm" class="feature-form">
+            <div class="two"><label>Тренировка<input name="name" required placeholder="Силовая — ноги"></label><label>Минут<input name="duration_minutes" type="number" min="1" max="600" value="60"></label></div>
+            <label>Результаты и рабочие веса<textarea name="notes" placeholder="Присед 60 кг: 4×8…"></textarea></label>
+            <button class="primary">Записать тренировку</button>
+          </form>
+          <div id="workoutList" class="compact-list"></div>
+        </article>
+
+        <article class="feature-card">
+          <span class="card-kicker">ЗАМЕРЫ ТЕЛА</span><h3>Изменения в сантиметрах</h3>
+          <form id="measurementForm" class="feature-form">
+            <div class="three"><label>Грудь<input name="chest_cm" type="number" step="0.1" placeholder="см"></label><label>Талия<input name="waist_cm" type="number" step="0.1" placeholder="см"></label><label>Бёдра<input name="hips_cm" type="number" step="0.1" placeholder="см"></label></div>
+            <div class="two"><label>Рука<input name="arm_cm" type="number" step="0.1" placeholder="см"></label><label>Бедро<input name="thigh_cm" type="number" step="0.1" placeholder="см"></label></div>
+            <button class="primary">Сохранить замеры</button>
+          </form>
+          <div id="measurementHistory" class="measurement-history"></div>
+          <label class="compact-upload" for="progressPhotoInput"><strong>Добавить фото прогресса</strong><span id="progressPhotoName">До 2 МБ — хранится в личной базе</span></label>
+          <input id="progressPhotoInput" type="file" accept="image/*" hidden>
+          <div id="progressPhotoGallery" class="photo-gallery"></div>
+        </article>
+
+        <article class="feature-card">
+          <span class="card-kicker">СПИСОК ПОКУПОК</span><h3>Покупки по последнему плану</h3>
+          <div class="shopping-summary"><div><strong id="shoppingDone">0 ₽</strong><br><span>отмечено как купленное</span></div><span id="shoppingTotal">из 0 ₽</span></div>
+          <div id="shoppingList"></div>
+        </article>
+
+        <article class="feature-card report-share">
+          <span class="card-kicker">ИТОГ НЕДЕЛИ</span><h3>Поделиться прогрессом</h3>
+          <p>Создам красивую вертикальную карточку без личных медицинских данных.</p>
+          <button class="primary" id="shareReport">Создать карточку</button>
+        </article>
+
+        <article class="feature-card">
+          <span class="card-kicker">ОБРАТНАЯ СВЯЗЬ</span><h3>Сообщить о проблеме</h3>
+          <form id="feedbackForm" class="feature-form">
+            <label>Что произошло<textarea name="message" required minlength="5" placeholder="Опиши действие и результат"></textarea></label>
+            <label class="compact-upload" for="feedbackScreenshot"><strong>Приложить скриншот</strong><span id="feedbackFileName">Необязательно, до 2 МБ</span></label>
+            <input id="feedbackScreenshot" name="screenshot" type="file" accept="image/*" hidden>
+            <button class="primary">Отправить владельцу</button>
+          </form>
+        </article>
+
+        <details class="feature-card danger-zone">
+          <summary>Удалить мои данные</summary>
+          <p>Будут навсегда удалены профиль, дневник, вес, фотографии, тренировки и настройки. Перед удалением можно запросить резервную копию у владельца.</p>
+          <input id="deleteConfirmation" placeholder="Напиши УДАЛИТЬ">
+          <button class="danger-button" id="deleteAccount">Удалить все данные</button>
+        </details>
+      </section>
+
       <section class="view" id="adminView">
         <div class="greeting"><p>ТОЛЬКО ДЛЯ ВЛАДЕЛЬЦА</p><h2>Управление ботом</h2></div>
         <article class="admin-status">
@@ -145,6 +230,21 @@
           <div class="admin-card-head"><div><h3>Пользователи</h3><p id="adminUsersCount">Загружаю список…</p></div></div>
           <form class="admin-search" id="adminSearchForm"><input id="adminSearch" placeholder="Имя или Telegram ID"><button>Найти</button></form>
           <div class="admin-users" id="adminUsers"></div>
+        </article>
+
+        <article class="admin-card admin-broadcast">
+          <div class="admin-card-head"><div><h3>Рассылка</h3><p id="broadcastEstimate">Сначала выбери аудиторию</p></div></div>
+          <form id="broadcastForm">
+            <label>Получатели<select name="audience"><option value="all">Все пользователи</option><option value="active30">Активные за 30 дней</option></select></label>
+            <label>Сообщение<textarea name="message" maxlength="3000" required placeholder="Текст новости или обновления"></textarea></label>
+            <label class="admin-confirm"><input name="confirmed" type="checkbox"><span>Я проверил текст и подтверждаю отправку</span></label>
+            <button class="primary">Отправить рассылку</button>
+          </form>
+        </article>
+
+        <article class="admin-card">
+          <div class="admin-card-head"><div><h3>Обратная связь</h3><p>Сообщения пользователей и скриншоты</p></div></div>
+          <div id="adminFeedback"></div>
         </article>
 
         <article class="admin-card">
@@ -179,6 +279,7 @@
       <button data-view="cameraView"><span>＋</span>Фото</button>
       <button data-view="planView"><span>▦</span>Рацион</button>
       <button data-view="coachView"><span>✦</span>AI</button>
+      <button data-view="toolsView"><span>◇</span>Ещё</button>
       <button data-view="profileView"><span>○</span>Профиль</button>
       <button class="hidden" id="adminNav" data-view="adminView"><span>◆</span>Админ</button>
     </nav>
@@ -186,7 +287,8 @@
 
   <dialog id="manualDialog"><form id="manualForm" method="dialog"><div class="dialog-head"><h3>Добавить вручную</h3><button type="button" data-close-dialog aria-label="Закрыть">×</button></div><label>Название<input name="name" required placeholder="Творог с бананом"></label><div class="two"><label>Вес, г<input name="grams" type="number" value="0"></label><label>Ккал<input name="kcal" type="number" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Добавить</button></form></dialog>
   <dialog id="editDialog"><form id="editForm" method="dialog"><div class="dialog-head"><h3>Проверить оценку</h3><button type="button" data-close-dialog aria-label="Закрыть">×</button></div><input name="meal_id" type="hidden"><label>Название<input name="name" required></label><div class="two"><label>Вес, г<input name="grams" type="number" step="1"></label><label>Ккал<input name="kcal" type="number" step="1" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Сохранить изменения</button></form></dialog>
+  <dialog id="photoConfirmDialog"><form id="photoConfirmForm" method="dialog"><div class="dialog-head"><h3>Проверь результат AI</h3><button type="button" data-close-dialog aria-label="Закрыть">×</button></div><p class="photo-confirm-summary" id="photoConfirmNote">Исправь неточности перед записью в дневник.</p><label>Название<input name="name" required></label><input name="confidence" type="hidden"><div class="two"><label>Вес, г<input name="grams" type="number" step="1"></label><label>Ккал<input name="kcal" type="number" step="1" required></label></div><div class="three"><label>Белки<input name="protein" type="number" step="0.1" required></label><label>Жиры<input name="fat" type="number" step="0.1" required></label><label>Углеводы<input name="carbs" type="number" step="0.1" required></label></div><button class="primary" value="default">Подтвердить и записать</button></form></dialog>
   <div class="toast" id="toast"></div>
-  <script src="/static/app.js?v=1.2.0"></script>
+  <script src="/static/app.js?v=1.3.0"></script>
 </body>
 </html>

@@ -103,3 +103,19 @@ test('owner admin panel is hidden by default and loads protected APIs', () => {
   const css = fs.readFileSync(path.join(__dirname, '../web/admin.css'), 'utf8');
   assert.match(css, /nav\.admin-nav-enabled/);
 });
+
+test('extended progress tools and confirmation flow are wired', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../web/index.html'), 'utf8');
+  for (const id of ['toolsView', 'photoConfirmDialog', 'favoriteList', 'waterValue', 'workoutForm',
+    'measurementForm', 'progressPhotoGallery', 'shoppingList', 'shareReport', 'feedbackForm',
+    'deleteAccount', 'barcodeInput', 'broadcastForm', 'adminFeedback']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  for (const endpoint of ['/api/meals/photo/confirm', '/api/favorites', '/api/water', '/api/workouts',
+    '/api/measurements', '/api/progress-photos', '/api/shopping', '/api/feedback', '/api/account',
+    '/api/barcode/', '/api/admin/broadcast']) {
+    assert.ok(source.includes(endpoint), endpoint);
+  }
+  assert.match(source, /form\.append\("save","false"\)/);
+  assert.match(source, /navigator\.share/);
+});

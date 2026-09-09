@@ -15,6 +15,7 @@ from app.config import Settings
 from app.database import Database
 from app.insights import build_insights, due_reminder_kinds, meal_totals
 from app.nutrition import calculate_targets
+from app.rate_limit import RateLimiter
 from app.schemas import ProfileInput
 
 
@@ -22,6 +23,7 @@ _db: Database | None = None
 _ai: NutritionAI | None = None
 _settings: Settings | None = None
 logger = logging.getLogger("uvicorn.error")
+_rate_limiter = RateLimiter()
 
 
 def configure_bot(db: Database, ai: NutritionAI, settings: Settings) -> None:
@@ -30,21 +32,38 @@ def configure_bot(db: Database, ai: NutritionAI, settings: Settings) -> None:
 
 
 def allowed(message: Message) -> bool:
-    return bool(
-        message.from_user
-        and (_settings is not None)
-        and (
-            _settings.public_access
-            or not _settings.owner_telegram_id
-            or message.from_user.id == _settings.owner_telegram_id
-        )
+    if not message.from_user or _settings is None:
+        return False
+    user_id = message.from_user.id
+    access_open = (
+        _settings.public_access
+        or not _settings.owner_telegram_id
+        or user_id == _settings.owner_telegram_id
     )
+    blocked = False
+    if _db and user_id != _settings.owner_telegram_id:
+        try:
+            blocked = _db.is_blocked(user_id)
+        except Exception:
+            blocked = False
+    return access_open and not blocked
 
 
 async def reject_if_needed(message: Message) -> bool:
     if allowed(message):
         return False
     await message.answer("Это персональный бот. Доступ закрыт.")
+    return True
+
+
+async def reject_ai_burst(message: Message) -> bool:
+    if not message.from_user or _settings is None:
+        return True
+    if message.from_user.id == _settings.owner_telegram_id:
+        return False
+    if _rate_limiter.allow(message.from_user.id, "ai", 20, 600):
+        return False
+    await message.answer("Слишком много AI-запросов подряд. Подожди немного и повтори.")
     return True
 
 
@@ -62,6 +81,15 @@ def admin_keyboard() -> InlineKeyboardMarkup | None:
     url = f"{_settings.webapp_url.rstrip('/')}/#admin"
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="Открыть админ-панель", web_app=WebAppInfo(url=url))
+    ]])
+
+
+def tools_keyboard(text: str = "Открыть раздел «Ещё»") -> InlineKeyboardMarkup | None:
+    if not _settings or not _settings.webapp_url:
+        return None
+    url = f"{_settings.webapp_url.rstrip('/')}/#tools"
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))
     ]])
 
 
@@ -225,6 +253,8 @@ def _format_advice(result) -> str:
 async def advice_for_message(message: Message, mode: str, query: str = ""):
     if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
         return
+    if await reject_ai_burst(message):
+        return
     context = _context(message.from_user.id)
     if not context:
         await message.answer("Сначала открой Mini App и заполни профиль.", reply_markup=app_keyboard())
@@ -341,8 +371,59 @@ async def reminders_command(message: Message):
     )
 
 
+async def water_command(message: Message):
+    if await reject_if_needed(message) or not message.from_user or _db is None:
+        return
+    if not _db.get_profile(message.from_user.id):
+        await message.answer("Сначала открой Mini App и заполни профиль.", reply_markup=app_keyboard())
+        return
+    match = re.search(r"\d+", _command_argument(message))
+    amount = int(match.group()) if match else 250
+    if not 50 <= amount <= 3000:
+        await message.answer("Укажи объём от 50 до 3000 мл. Например: /water 250")
+        return
+    _db.add_water(message.from_user.id, str(date.today()), amount)
+    total = _db.water_for_day(message.from_user.id, str(date.today()))["total_ml"]
+    _record_bot_event(message.from_user.id, "water_added", detail=str(amount))
+    await message.answer(f"Записал +{amount} мл. Сегодня выпито {total} мл.", reply_markup=tools_keyboard())
+
+
+async def favorites_command(message: Message):
+    if await reject_if_needed(message) or not message.from_user or _db is None:
+        return
+    items = _db.favorites(message.from_user.id)
+    if not items:
+        await message.answer("Избранных блюд пока нет. Сохрани блюдо из дневника.", reply_markup=tools_keyboard())
+        return
+    names = "\n".join(f"• {item['name']} — {round(item['kcal'])} ккал" for item in items[:10])
+    await message.answer(f"Избранные блюда:\n{names}", reply_markup=tools_keyboard())
+
+
+async def shopping_command(message: Message):
+    if await reject_if_needed(message) or not message.from_user or _db is None:
+        return
+    shopping = _db.shopping_list(message.from_user.id)
+    pending = [item for item in shopping["items"] if not item["checked"]]
+    if not pending:
+        await message.answer("Активного списка покупок нет или всё уже куплено.", reply_markup=tools_keyboard())
+        return
+    lines = "\n".join(f"• {item['name']} — {item['quantity']}" for item in pending[:20])
+    await message.answer(f"Осталось купить:\n{lines}", reply_markup=tools_keyboard("Открыть список покупок"))
+
+
+async def tools_command(message: Message):
+    if await reject_if_needed(message):
+        return
+    await message.answer(
+        "В разделе «Ещё» находятся тренировки, замеры, фотографии прогресса и обратная связь.",
+        reply_markup=tools_keyboard(),
+    )
+
+
 async def label_photo(message: Message, bot: Bot):
     if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
+        return
+    if await reject_ai_burst(message):
         return
     if not _db.get_profile(message.from_user.id):
         await message.answer("Сначала открой Mini App и заполни профиль.", reply_markup=app_keyboard())
@@ -382,6 +463,8 @@ async def label_help(message: Message):
 
 async def generate_plan_for_message(message: Message, budget: int):
     if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
+        return
+    if await reject_ai_burst(message):
         return
     if not 500 <= budget <= 200000:
         await message.answer("Укажи бюджет от 500 до 200000 рублей.")
@@ -428,6 +511,8 @@ async def plan_command(message: Message):
 
 async def photo(message: Message, bot: Bot):
     if await reject_if_needed(message) or not message.from_user or _db is None or _ai is None:
+        return
+    if await reject_ai_burst(message):
         return
     if not _db.get_profile(message.from_user.id):
         await message.answer("Сначала открой Mini App и заполни профиль.", reply_markup=app_keyboard())
@@ -554,6 +639,10 @@ def create_dispatcher(db: Database, ai: NutritionAI, settings: Settings) -> tupl
     router.message.register(review_command, Command("review"))
     router.message.register(report_command, Command("report"))
     router.message.register(reminders_command, Command("reminders"))
+    router.message.register(water_command, Command("water"))
+    router.message.register(favorites_command, Command("favorites"))
+    router.message.register(shopping_command, Command("shopping"))
+    router.message.register(tools_command, Command("workout", "feedback"))
     router.message.register(backup_database, Command("backup"))
     router.message.register(restore_database, Command("restore"), F.document)
     router.message.register(restore_help, Command("restore"))

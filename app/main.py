@@ -15,6 +15,7 @@ from app.api import router as api_router
 from app.bot import create_dispatcher, reminder_loop
 from app.config import Settings, get_settings
 from app.database import Database
+from app.rate_limit import RateLimiter
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -49,6 +50,7 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
         app.state.db = Database(settings.database_path)
         app.state.db.initialize()
         app.state.ai = NutritionAI(settings)
+        app.state.rate_limiter = RateLimiter()
         bot_task = None
         reminder_task = None
         bot = None
@@ -66,6 +68,7 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
             reminder_task = asyncio.create_task(reminder_loop(bot, app.state.db))
         app.state.bot_task = bot_task
         app.state.reminder_task = reminder_task
+        app.state.bot = bot
         probe_task = asyncio.create_task(check_local_http(settings))
         logger.info("MASSUP_START version=%s bind=%s:%s", VERSION, settings.host, settings.port)
         try:
@@ -95,6 +98,8 @@ def create_app(custom_settings: Settings | None = None) -> FastAPI:
     app.state.version = VERSION
     app.state.db = Database(settings.database_path)
     app.state.ai = NutritionAI(settings)
+    app.state.rate_limiter = RateLimiter()
+    app.state.bot = None
     app.include_router(api_router)
     app.mount("/static", StaticFiles(directory=WEB), name="static")
 

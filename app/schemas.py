@@ -64,6 +64,96 @@ class MealCorrection(BaseModel):
     carbs: float = Field(ge=0, le=2000)
 
 
+class ConfirmedPhotoMealInput(MealCorrection):
+    eaten_on: date = Field(default_factory=date.today)
+    meal_type: str = Field(default="Приём пищи", min_length=1, max_length=40)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class FavoriteInput(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=160)
+    meal_type: str = Field(default="Приём пищи", max_length=40)
+    grams: float = Field(default=0, ge=0, le=10000)
+    kcal: float = Field(ge=0, le=20000)
+    protein: float = Field(ge=0, le=1000)
+    fat: float = Field(ge=0, le=1000)
+    carbs: float = Field(ge=0, le=2000)
+
+
+class FavoriteUseInput(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    eaten_on: date = Field(default_factory=date.today)
+    meal_type: str | None = Field(default=None, max_length=40)
+
+
+class WaterInput(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    ml: int = Field(ge=50, le=3000)
+    drank_on: date = Field(default_factory=date.today)
+
+
+class WorkoutInput(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    performed_on: date = Field(default_factory=date.today)
+    name: str = Field(min_length=1, max_length=120)
+    duration_minutes: int = Field(ge=1, le=600)
+    notes: str = Field(default="", max_length=1000)
+
+
+class BodyMeasurementInput(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    measured_on: date = Field(default_factory=date.today)
+    chest_cm: float | None = Field(default=None, ge=20, le=300)
+    waist_cm: float | None = Field(default=None, ge=20, le=300)
+    hips_cm: float | None = Field(default=None, ge=20, le=300)
+    arm_cm: float | None = Field(default=None, ge=10, le=150)
+    thigh_cm: float | None = Field(default=None, ge=10, le=200)
+    notes: str = Field(default="", max_length=500)
+
+    @model_validator(mode="after")
+    def at_least_one_measurement(self) -> "BodyMeasurementInput":
+        if all(
+            value is None
+            for value in (self.chest_cm, self.waist_cm, self.hips_cm, self.arm_cm, self.thigh_cm)
+        ):
+            raise ValueError("Укажите хотя бы один замер")
+        return self
+
+
+class ShoppingToggleInput(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    checked: bool
+
+
+class UserControlInput(BaseModel):
+    blocked: bool
+    note: str = Field(default="", max_length=300)
+
+
+class BroadcastInput(BaseModel):
+    message: str = Field(min_length=1, max_length=3000)
+    audience: Literal["all", "active30"] = "all"
+    confirmed: bool = False
+
+    @model_validator(mode="after")
+    def require_confirmation(self) -> "BroadcastInput":
+        if not self.confirmed:
+            raise ValueError("Подтвердите отправку рассылки")
+        return self
+
+
+class DeleteDataInput(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=20)
+
+    @field_validator("confirmation")
+    @classmethod
+    def require_delete_word(cls, value: str) -> str:
+        if value.strip().upper() != "УДАЛИТЬ":
+            raise ValueError("Введите слово УДАЛИТЬ")
+        return value
+
+
 class FoodItem(BaseModel):
     name: str
     estimated_grams: float = Field(ge=0)

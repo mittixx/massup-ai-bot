@@ -74,6 +74,24 @@ def build_insights(
         achievements.append({"code": "weights_5", "title": "Контроль прогресса", "text": "Записано 5 взвешиваний"})
     if len(ordered_weights) >= 2 and float(ordered_weights[-1]["weight_kg"]) - float(ordered_weights[0]["weight_kg"]) >= 1:
         achievements.append({"code": "gain_1kg", "title": "+1 килограмм", "text": "Первый килограмм к цели набран"})
+    for meal_count in (10, 50, 100):
+        if len(meals) >= meal_count:
+            achievements.append({
+                "code": f"meals_{meal_count}",
+                "title": f"{meal_count} записей",
+                "text": "Дневник становится точнее с каждой записью",
+            })
+    if ordered_weights:
+        start_weight = float(ordered_weights[0]["weight_kg"])
+        current_weight = float(ordered_weights[-1]["weight_kg"])
+        target_weight = float(profile["target_weight_kg"])
+        distance = target_weight - start_weight
+        if distance > 0 and (current_weight - start_weight) / distance >= 0.5:
+            achievements.append({
+                "code": "halfway",
+                "title": "Половина пути",
+                "text": "Пройдено не меньше половины пути к целевому весу",
+            })
 
     forecast = {
         "status": "insufficient_data",
@@ -107,9 +125,21 @@ def build_insights(
             else:
                 forecast.update(status="not_growing", message="Устойчивый рост веса пока не определяется.")
 
+    points = len(meals) * 5 + len(ordered_weights) * 10 + streak * 20 + target_days * 15
+    level = min(20, points // 100 + 1)
+    level_names = ("Старт", "Режим", "Стабильность", "Прогресс", "Сила")
+    level_name = level_names[min((level - 1) // 4, len(level_names) - 1)]
+
     return {
         "streak_days": streak,
         "achievements": achievements,
+        "gamification": {
+            "points": points,
+            "level": level,
+            "level_name": level_name,
+            "next_level_points": level * 100 if level < 20 else points,
+            "progress_percent": 100 if level >= 20 else points % 100,
+        },
         "week": {
             "start": str(week_start),
             "end": str(today),
